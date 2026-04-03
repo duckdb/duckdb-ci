@@ -1,0 +1,32 @@
+name: "Checkout"
+description: "Use optimized checkout for custom runners"
+inputs:
+  runner_provider:
+    description: "Runner provider: namespace or github"
+    required: false
+    default: "github"
+  fetch_depth:
+    description: "Fetch depth for actions/checkout"
+    required: false
+    default: "1"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Checkout (Namespace)
+      if: ${{ inputs.runner_provider == 'namespace' }}
+      uses: namespacelabs/nscloud-checkout-action@v1
+      env:
+        GIT_CONFIG_COUNT: 1
+        GIT_CONFIG_KEY_0: checkout.workers
+        GIT_CONFIG_VALUE_0: 16
+
+    - name: Checkout (GitHub)
+      if: ${{ inputs.runner_provider == 'github' }}
+      uses: actions/checkout@v6
+      with:
+        fetch-depth: ${{ inputs.fetch_depth }}
+      env:
+        GIT_CONFIG_COUNT: 1
+        GIT_CONFIG_KEY_0: checkout.workers
+        GIT_CONFIG_VALUE_0: 4

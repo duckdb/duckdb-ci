@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test-checkout:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository for local action
+        uses: actions/checkout@v6
+
+      - name: Test custom checkout action
+        uses: ./.github/actions/checkout
+        with:
+          runner_provider: github
+          fetch_depth: "1"
+
+      - name: Verify checkout result
+        run: |
+          test -d .git
+          test -f .github/actions/checkout/action.yml
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Verify workflows with actionlint and shellcheck
+        run: |
+          echo "::add-matcher::.github/actionlint-matcher.json"
+          echo "::group::ShellCheck version"
+          shellcheck --version
+          echo "::endgroup::"
+          echo "::group::Install actionlint"
+          bash <(curl --retry 5 https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)
+          echo "::endgroup::"
+          ./actionlint -color
