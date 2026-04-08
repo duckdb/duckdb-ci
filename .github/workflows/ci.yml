@@ -7,7 +7,15 @@ on:
 
 jobs:
   test-checkout:
-    runs-on: ubuntu-latest
+    name: test-checkout (${{ matrix.runner_provider }})
+    strategy:
+      matrix:
+        include:
+          - runner_provider: namespace
+            runs_on: namespace-profile-linux-small
+          - runner_provider: github
+            runs_on: ubuntu-latest
+    runs-on: ${{ matrix.runs_on }}
     steps:
       - name: Checkout repository for local action
         uses: actions/checkout@v6
@@ -15,7 +23,7 @@ jobs:
       - name: Test custom checkout action
         uses: ./.github/actions/checkout
         with:
-          runner_provider: github
+          runner_provider: ${{ matrix.runner_provider }}
           fetch_depth: "1"
 
       - name: Verify checkout result
