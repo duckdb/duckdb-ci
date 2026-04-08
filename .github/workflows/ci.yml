@@ -23,13 +23,14 @@ jobs:
         uses: ./.github/actions/checkout
         with:
           runner_provider: ${{ matrix.runner_provider }}
-          fetch_depth: "1"
+          fetch_depth: "0"
           path: test
 
       - name: Verify checkout result
         run: |
           test -d test/.git
           test -f test/.github/actions/checkout/action.yml
+          test "$(git -C test rev-parse --is-shallow-repository)" = "false"
 
   lint:
     runs-on: namespace-profile-linux-small
