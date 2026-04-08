@@ -1,13 +1,20 @@
 name: CI
 
 on:
-  push:
   pull_request:
   workflow_dispatch:
 
 jobs:
   test-checkout:
-    runs-on: ubuntu-latest
+    name: test-checkout (${{ matrix.runner_provider }})
+    strategy:
+      matrix:
+        include:
+          - runner_provider: namespace
+            runs_on: namespace-profile-linux-small
+          - runner_provider: github
+            runs_on: ubuntu-latest
+    runs-on: ${{ matrix.runs_on }}
     steps:
       - name: Checkout repository for local action
         uses: actions/checkout@v6
@@ -15,16 +22,18 @@ jobs:
       - name: Test custom checkout action
         uses: ./.github/actions/checkout
         with:
-          runner_provider: github
-          fetch_depth: "1"
+          runner_provider: ${{ matrix.runner_provider }}
+          fetch_depth: "0"
+          path: test
 
       - name: Verify checkout result
         run: |
-          test -d .git
-          test -f .github/actions/checkout/action.yml
+          test -d test/.git
+          test -f test/.github/actions/checkout/action.yml
+          test "$(git -C test rev-parse --is-shallow-repository)" = "false"
 
   lint:
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-linux-small
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -39,3 +48,29 @@ jobs:
           bash <(curl --retry 5 https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)
           echo "::endgroup::"
           ./actionlint -color
+
+  summary:
+    name: Summary
+    if: ${{ always() }}
+    needs:
+      - lint
+      - test-checkout
+    runs-on: ubuntu-slim
+    steps:
+      - name: Check CI status
+        run: |
+          NEEDS_JSON='${{ toJSON(needs) }}'
+
+          failed_or_cancelled=$(
+            jq -r '
+            to_entries[]
+              | select(.value.result == "failure" or .value.result == "cancelled")
+              | "\(.key): \(.value.result)"
+            ' <<<"$NEEDS_JSON"
+          )
+
+          if [[ -n "$failed_or_cancelled" ]]; then
+            echo "One or more required jobs failed or were cancelled."
+            echo "$failed_or_cancelled"
+            exit 1
+          fi
