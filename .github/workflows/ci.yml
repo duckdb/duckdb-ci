@@ -31,7 +31,7 @@ jobs:
           test -f .github/actions/checkout/action.yml
 
   lint:
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-linux-small
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
