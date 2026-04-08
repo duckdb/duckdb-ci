@@ -46,3 +46,29 @@ jobs:
           bash <(curl --retry 5 https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)
           echo "::endgroup::"
           ./actionlint -color
+
+  summary:
+    name: Summary
+    if: ${{ always() }}
+    needs:
+      - lint
+      - test-checkout
+    runs-on: ubuntu-slim
+    steps:
+      - name: Check CI status
+        run: |
+          NEEDS_JSON='${{ toJSON(needs) }}'
+
+          failed_or_cancelled=$(
+            jq -r '
+            to_entries[]
+              | select(.value.result == "failure" or .value.result == "cancelled")
+              | "\(.key): \(.value.result)"
+            ' <<<"$NEEDS_JSON"
+          )
+
+          if [[ -n "$failed_or_cancelled" ]]; then
+            echo "One or more required jobs failed or were cancelled."
+            echo "$failed_or_cancelled"
+            exit 1
+          fi
