@@ -9,6 +9,10 @@ inputs:
     description: "Fetch depth for actions/checkout"
     required: false
     default: "1"
+  path:
+    description: "Relative path under $GITHUB_WORKSPACE to place the repository"
+    required: false
+    default: "."
 
 runs:
   using: "composite"
@@ -18,6 +22,7 @@ runs:
       uses: namespacelabs/nscloud-checkout-action@v1
       with:
         fetch-depth: ${{ inputs.fetch_depth }}
+        path: ${{ inputs.path }}
       env:
         GIT_CONFIG_COUNT: 1
         GIT_CONFIG_KEY_0: checkout.workers
@@ -28,6 +33,7 @@ runs:
       uses: actions/checkout@v6
       with:
         fetch-depth: ${{ inputs.fetch_depth }}
+        path: ${{ inputs.path }}
       env:
         GIT_CONFIG_COUNT: 1
         GIT_CONFIG_KEY_0: checkout.workers

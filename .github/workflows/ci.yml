@@ -24,11 +24,12 @@ jobs:
         with:
           runner_provider: ${{ matrix.runner_provider }}
           fetch_depth: "1"
+          path: test
 
       - name: Verify checkout result
         run: |
-          test -d .git
-          test -f .github/actions/checkout/action.yml
+          test -d test/.git
+          test -f test/.github/actions/checkout/action.yml
 
   lint:
     runs-on: namespace-profile-linux-small
