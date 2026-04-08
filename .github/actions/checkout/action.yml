@@ -16,6 +16,8 @@ runs:
     - name: Checkout (Namespace)
       if: ${{ inputs.runner_provider == 'namespace' }}
       uses: namespacelabs/nscloud-checkout-action@v1
+      with:
+        fetch-depth: ${{ inputs.fetch_depth }}
       env:
         GIT_CONFIG_COUNT: 1
         GIT_CONFIG_KEY_0: checkout.workers
