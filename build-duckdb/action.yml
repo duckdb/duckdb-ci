@@ -38,6 +38,7 @@ runs:
   using: composite
   steps:
     - name: Configure
+      if: ${{ inputs.vcpkg-commit != '' }}
       shell: bash
       run: |
         cache_path="${GITHUB_WORKSPACE}/vcpkg-cache"
@@ -46,7 +47,7 @@ runs:
         echo "VCPKG_BINARY_SOURCES=clear;files,${cache_path},readwrite" >> "$GITHUB_ENV"
 
     - name: Restore vcpkg cache
-      if: ${{ inputs.cache == 'true' }}
+      if: ${{ inputs.vcpkg-commit != '' && inputs.cache == 'true' }}
       id: vcpkg-cache
       uses: actions/cache/restore@v5
       with:
@@ -63,14 +64,25 @@ runs:
       with:
         vcpkgGitCommitId: ${{ inputs.vcpkg-commit }}
 
+    - name: Reset env
+      if: ${{ inputs.vcpkg-commit != '' }}
+      shell: bash
+      run: |
+        # Reset vcpkg env
+        echo "::group::After run-vcpkg"
+        env | grep VCPKG
+        echo "::endgroup::"
+
+        {
+          echo VCPKG_TOOLCHAIN_PATH="${{ env.VCPKG_ROOT }}/scripts/buildsystems/vcpkg.cmake";
+          echo VCPKG_DEFAULT_BINARY_CACHE="${{ github.workspace }}/vcpkg-cache";
+          echo VCPKG_BINARY_SOURCES="clear;files,${{ github.workspace }}/vcpkg-cache,readwrite";
+          echo USE_MERGED_VCPKG_MANIFEST=1;
+        } >> "$GITHUB_ENV"
+
     - name: Build
       shell: bash
       working-directory: ${{ inputs.working-directory }}
-      env:
-        VCPKG_TOOLCHAIN_PATH: ${{ env.VCPKG_ROOT }}/scripts/buildsystems/vcpkg.cmake
-        VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/vcpkg-cache
-        VCPKG_BINARY_SOURCES: clear;files,${{ github.workspace }}/vcpkg-cache,readwrite
-        USE_MERGED_VCPKG_MANIFEST: 1
       run: ${{ inputs.build }}
 
     - name: Test
@@ -80,7 +92,7 @@ runs:
       run: ${{ inputs.test }}
 
     - name: Save vcpkg cache
-      if: ${{ inputs.cache == 'true' && inputs.save-cache == 'true' && steps.vcpkg-cache.outputs.cache-hit != 'true' }}
+      if: ${{ inputs.vcpkg-commit != '' && inputs.cache == 'true' && inputs.save-cache == 'true' && steps.vcpkg-cache.outputs.cache-hit != 'true' }}
       uses: actions/cache/save@v5
       with:
         path: ${{ github.workspace }}/vcpkg-cache
