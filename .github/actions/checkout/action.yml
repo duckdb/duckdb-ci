@@ -19,7 +19,7 @@ runs:
   steps:
     - name: Checkout (Namespace)
       if: ${{ inputs.runner_provider == 'namespace' }}
-      uses: namespacelabs/nscloud-checkout-action@v1
+      uses: namespacelabs/nscloud-checkout-action@v8
       with:
         fetch-depth: ${{ inputs.fetch_depth }}
         path: ${{ inputs.path }}
