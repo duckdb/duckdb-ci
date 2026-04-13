@@ -8,6 +8,10 @@ inputs:
      description: Build command
      required: true
 
+  working-directory:
+    description: Directory in which build/test/bundle commands are executed.
+    default: "."
+
   test:
      description: Test command to run after build succeeded
 
@@ -47,7 +51,7 @@ runs:
       uses: actions/cache/restore@v4
       with:
         path: ${{ github.workspace }}/vcpkg-cache
-        key: vcpkg-${{ runner.os }}-${{ hashFiles('build/extension_configuration/vcpkg.json') }}
+        key: vcpkg-${{ runner.os }}-${{ hashFiles(format('{0}/build/extension_configuration/vcpkg.json', inputs.working-directory)) }}
         restore-keys: |
           vcpkg-${{ runner.os }}-
 
@@ -61,6 +65,7 @@ runs:
 
     - name: Build
       shell: bash
+      working-directory: ${{ inputs.working-directory }}
       env:
         VCPKG_TOOLCHAIN_PATH: ${{ env.VCPKG_ROOT }}/scripts/buildsystems/vcpkg.cmake
         VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/vcpkg-cache
@@ -71,6 +76,7 @@ runs:
     - name: Test
       if: ${{ inputs.test != '' }}
       shell: bash
+      working-directory: ${{ inputs.working-directory }}
       run: ${{ inputs.test }}
 
     - name: Save vcpkg cache
@@ -83,6 +89,7 @@ runs:
     - name: Bundle
       if: ${{ inputs.bundle != '' }}
       shell: bash
+      working-directory: ${{ inputs.working-directory }}
       run: ${{ inputs.bundle }}
 
     - name: Upload
@@ -90,5 +97,5 @@ runs:
       uses: actions/upload-artifact@v7
       with:
         name: ${{ inputs.upload-name }}
-        path: ${{ inputs.upload-path }}
+        path: ${{ inputs.working-directory }}/${{ inputs.upload-path }}
         if-no-files-found: error
