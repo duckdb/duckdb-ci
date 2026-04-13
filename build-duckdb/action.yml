@@ -1,0 +1,101 @@
+name: Build DuckDB
+description: Build DuckDB, optionally run tests, and upload an artifact.
+inputs:
+  build-type:
+     description: Name of the build subdirectory (release, debug, relassert, etc).
+     default: "release"
+  build:
+     description: Build command
+     required: true
+
+  working-directory:
+    description: Directory in which build/test/bundle commands are executed.
+    default: "."
+
+  test:
+     description: Test command to run after build succeeded
+
+  bundle:
+     description: Bundle command to create an artifact
+
+  upload-name:
+    description: Uploaded artifact name
+  upload-path:
+    description: Output tarball path
+    default: build/release-artifact.tar.gz
+
+  cache:
+    description: Whether to enable the vcpkg cache
+    default: "true"
+  save-cache:
+    description: Whether to save vcpkg cache.
+    default: "true"
+
+  vcpkg-commit:
+    description: Git Commit ID used for vcpkg. Omit to skip vcpkg setup.
+
+runs:
+  using: composite
+  steps:
+    - name: Configure
+      shell: bash
+      run: |
+        cache_path="${GITHUB_WORKSPACE}/vcpkg-cache"
+        mkdir -p "${cache_path}"
+        echo "VCPKG_DEFAULT_BINARY_CACHE=${cache_path}" >> "$GITHUB_ENV"
+        echo "VCPKG_BINARY_SOURCES=clear;files,${cache_path},readwrite" >> "$GITHUB_ENV"
+
+    - name: Restore vcpkg cache
+      if: ${{ inputs.cache == 'true' }}
+      id: vcpkg-cache
+      uses: actions/cache/restore@v4
+      with:
+        path: ${{ github.workspace }}/vcpkg-cache
+        key: vcpkg-${{ runner.os }}-${{ hashFiles(format('{0}/build/extension_configuration/vcpkg.json', inputs.working-directory)) }}
+        restore-keys: |
+          vcpkg-${{ runner.os }}-
+
+    - name: Setup vcpkg
+      if: ${{ inputs.vcpkg-commit != '' }}
+      uses: lukka/run-vcpkg@v11.5
+      env:
+        FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+      with:
+        vcpkgGitCommitId: ${{ inputs.vcpkg-commit }}
+
+    - name: Build
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        VCPKG_TOOLCHAIN_PATH: ${{ env.VCPKG_ROOT }}/scripts/buildsystems/vcpkg.cmake
+        VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/vcpkg-cache
+        VCPKG_BINARY_SOURCES: clear;files,${{ github.workspace }}/vcpkg-cache,readwrite
+        USE_MERGED_VCPKG_MANIFEST: 1
+      run: ${{ inputs.build }}
+
+    - name: Test
+      if: ${{ inputs.test != '' }}
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: ${{ inputs.test }}
+
+    - name: Save vcpkg cache
+      if: ${{ inputs.cache == 'true' && inputs.save-cache == 'true' && steps.vcpkg-cache.outputs.cache-hit != 'true' }}
+      uses: actions/cache/save@v4
+      with:
+        path: ${{ github.workspace }}/vcpkg-cache
+        key: ${{ steps.vcpkg-cache.outputs.cache-primary-key }}
+
+    - name: Bundle
+      if: ${{ inputs.bundle != '' }}
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: ${{ inputs.bundle }}
+
+    - name: Upload
+      if: ${{ inputs.upload-name != '' }}
+      uses: actions/upload-artifact@v7
+      with:
+        name: ${{ inputs.upload-name }}
+        path: ${{ inputs.working-directory }}/${{ inputs.upload-path }}
+        if-no-files-found: error

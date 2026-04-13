@@ -5,32 +5,20 @@ on:
   workflow_dispatch:
 
 jobs:
-  test-checkout:
-    name: test-checkout (${{ matrix.runner_provider }})
-    strategy:
-      matrix:
-        include:
-          - runner_provider: namespace
-            runs_on: namespace-profile-linux-small
-          - runner_provider: github
-            runs_on: ubuntu-latest
-    runs-on: ${{ matrix.runs_on }}
+  prepare:
+    name: Prepare
+    runs-on: namespace-profile-linux-small
+
+    outputs:
+      VCPKG_COMMIT: ${{ steps.config.outputs.VCPKG_COMMIT }}
+
     steps:
-      - name: Checkout repository for local action
-        uses: actions/checkout@v6
-
-      - name: Test custom checkout action
-        uses: ./.github/actions/checkout
-        with:
-          runner_provider: ${{ matrix.runner_provider }}
-          fetch_depth: "0"
-          path: test
-
-      - name: Verify checkout result
+      - name: Config
+        id: config
         run: |
-          test -d test/.git
-          test -f test/.github/actions/checkout/action.yml
-          test "$(git -C test rev-parse --is-shallow-repository)" = "false"
+          {
+            echo VCPKG_COMMIT=84bab45d415d22042bd0b9081aea57f362da3f35
+          } >> "$GITHUB_OUTPUT"
 
   lint:
     runs-on: namespace-profile-linux-small
@@ -49,12 +37,116 @@ jobs:
           echo "::endgroup::"
           ./actionlint -color
 
+  test-checkout:
+    name: test-checkout (${{ matrix.runner_provider }})
+
+    needs:
+      - lint
+
+    strategy:
+      matrix:
+        include:
+          - runner_provider: namespace
+            runs_on: namespace-profile-linux-small
+          - runner_provider: github
+            runs_on: ubuntu-latest
+    runs-on: ${{ matrix.runs_on }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Test custom checkout action
+        uses: ./.github/actions/checkout
+        with:
+          runner_provider: ${{ matrix.runner_provider }}
+          fetch_depth: "0"
+          path: test
+
+      - name: Verify checkout result
+        run: |
+          test -d test/.git
+          test -f test/.github/actions/checkout/action.yml
+          test "$(git -C test rev-parse --is-shallow-repository)" = "false"
+
+  test-build-duckdb:
+    name: test-build-duckdb (${{ matrix.name }})
+    runs-on: namespace-profile-linux-x64
+    needs:
+      - prepare
+      - lint
+
+    strategy:
+      matrix:
+        include:
+          - name: Minimal build
+            build: echo done > build.txt
+            verify: diff -u <(echo done) build.txt
+
+          - name: Default release
+            build: make release
+            vcpkg-commit: ${{ needs.prepare.outputs.VCPKG_COMMIT }}
+            verify: |
+              ls -lh ${GITHUB_WORKSPACE}/vcpkg-cache
+              ls -lh build/release
+
+          - name: Upload release
+            build: make release
+            bundle: make release-artifact
+            upload-name: linux-release
+            vcpkg-commit: ${{ needs.prepare.outputs.VCPKG_COMMIT }}
+            verify: |
+              ls -lh ${GITHUB_WORKSPACE}/vcpkg-cache
+              ls -lh build/release
+              ls -lh build/release-artifact.tar.gz
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          path: duckdb-ci
+
+      - name: Setup ccache
+        uses: hendrikmuhs/ccache-action@main
+        with:
+          max-size: 5GB
+          evict-old-files: 'job'
+
+      - name: Checkout DuckDB
+        uses: ./duckdb-ci/.github/actions/checkout
+        with:
+          repository: duckdb/duckdb
+          path: duckdb
+          runner_provider: namespace
+          fetch_depth: "0"
+
+      - name: Test build DuckDB
+        uses: ./duckdb-ci/build-duckdb
+        with:
+          working-directory: duckdb
+          build: ${{ matrix.build }}
+          bundle: ${{ matrix.bundle }}
+          upload-name: ${{ matrix.upload-name }}
+          vcpkg-commit: ${{ matrix.vcpkg-commit }}
+
+      - name: Verify uploaded artifact
+        if: ${{ matrix.upload-name }}
+        uses: actions/download-artifact@v5
+        with:
+          name: ${{ matrix.upload-name }}
+          path: uploaded-artifact
+
+      - name: Verify
+        shell: bash
+        working-directory: duckdb
+        run: ${{ matrix.verify }}
+
   summary:
     name: Summary
     if: ${{ always() }}
     needs:
       - lint
       - test-checkout
+      - test-build-duckdb
     runs-on: ubuntu-slim
     steps:
       - name: Check CI status
