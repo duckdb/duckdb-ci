@@ -106,7 +106,7 @@ jobs:
           path: duckdb-ci
 
       - name: Setup ccache
-        uses: hendrikmuhs/ccache-action@main
+        uses: hendrikmuhs/ccache-action@v1
         with:
           max-size: 5GB
           evict-old-files: 'job'
@@ -130,7 +130,7 @@ jobs:
 
       - name: Verify uploaded artifact
         if: ${{ matrix.upload-name }}
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v8
         with:
           name: ${{ matrix.upload-name }}
           path: uploaded-artifact
