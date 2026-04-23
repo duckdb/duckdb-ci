@@ -10,6 +10,9 @@ inputs:
   repository:
     description: "Repository name with owner"
     default: "${{ github.repository }}"
+  ref:
+    description: "Branch, tag, or commit SHA to checkout"
+    default: ""
   path:
     description: "Relative path under $GITHUB_WORKSPACE to place the repository"
     default: "."
@@ -24,6 +27,7 @@ runs:
         fetch-depth: ${{ inputs.fetch_depth }}
         path: ${{ inputs.path }}
         repository: ${{ inputs.repository }}
+        ref: ${{ inputs.ref }}
       env:
         GIT_CONFIG_COUNT: 1
         GIT_CONFIG_KEY_0: checkout.workers
@@ -36,6 +40,7 @@ runs:
         fetch-depth: ${{ inputs.fetch_depth }}
         path: ${{ inputs.path }}
         repository: ${{ inputs.repository }}
+        ref: ${{ inputs.ref }}
       env:
         GIT_CONFIG_COUNT: 1
         GIT_CONFIG_KEY_0: checkout.workers
