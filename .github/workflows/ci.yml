@@ -63,6 +63,7 @@ jobs:
         with:
           runner_provider: ${{ matrix.runner_provider }}
           fetch_depth: "0"
+          ref: ${{ github.sha }}
           path: test
 
       - name: Verify checkout result
@@ -70,6 +71,7 @@ jobs:
           test -d test/.git
           test -f test/.github/actions/checkout/action.yml
           test "$(git -C test rev-parse --is-shallow-repository)" = "false"
+          test "$(git -C test rev-parse HEAD)" = "${{ github.sha }}"
 
   test-build-duckdb:
     name: test-build-duckdb (${{ matrix.name }})
