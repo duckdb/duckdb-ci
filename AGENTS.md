@@ -1,0 +1,2 @@
+- Use gh CLI.
+- Run `actionlint` directly to test workflow/action changes.
