@@ -41,7 +41,7 @@ jobs:
           ./actionlint -color
 
   test-checkout:
-    name: test-checkout (${{ matrix.runner_provider }})
+    name: test-checkout (${{ matrix.runner_provider }}, ${{ matrix.runs_on }})
 
     needs:
       - lint
@@ -53,6 +53,8 @@ jobs:
             runs_on: namespace-profile-linux-small
           - runner_provider: github
             runs_on: ubuntu-latest
+          - runner_provider: namespace
+            runs_on: namespace-profile-windows-x64
     runs-on: ${{ matrix.runs_on }}
     steps:
       - name: Checkout
@@ -66,7 +68,9 @@ jobs:
           path: test
 
       - name: Verify checkout result
+        shell: bash
         run: |
+          set -eux -o pipefail
           test -d test/.git
           test -f test/.github/actions/checkout/action.yml
           test "$(git -C test rev-parse --is-shallow-repository)" = "false"
@@ -89,6 +93,7 @@ jobs:
             build: make release
             vcpkg-commit: ${{ needs.prepare.outputs.VCPKG_COMMIT }}
             verify: |
+              set -eux -o pipefail
               ls -lh ${GITHUB_WORKSPACE}/vcpkg-cache
               ls -lh build/release
 
@@ -98,6 +103,7 @@ jobs:
             upload-name: linux-release
             vcpkg-commit: ${{ needs.prepare.outputs.VCPKG_COMMIT }}
             verify: |
+              set -eux -o pipefail
               ls -lh ${GITHUB_WORKSPACE}/vcpkg-cache
               ls -lh build/release
               ls -lh build/release-artifact.tar.gz

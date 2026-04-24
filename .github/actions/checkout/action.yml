@@ -18,7 +18,8 @@ runs:
   using: "composite"
   steps:
     - name: Checkout (Namespace)
-      if: ${{ inputs.runner_provider == 'namespace' }}
+      id: namespace_checkout
+      if: inputs.runner_provider == 'namespace' && runner.os != 'Windows'
       uses: namespacelabs/nscloud-checkout-action@v8
       with:
         fetch-depth: ${{ inputs.fetch_depth }}
@@ -28,9 +29,13 @@ runs:
         GIT_CONFIG_COUNT: 1
         GIT_CONFIG_KEY_0: checkout.workers
         GIT_CONFIG_VALUE_0: 16
+      continue-on-error: true
 
+    # Fallback to GitHub's checkout when namespace checkout is unavailable or
+    # fails. For example, Windows does not support namespace's git mirror (yet),
+    # so the namespace step is skipped.
     - name: Checkout (GitHub)
-      if: ${{ inputs.runner_provider == 'github' }}
+      if: inputs.runner_provider == 'github' || steps.namespace_checkout.outcome != 'success'
       uses: actions/checkout@v6
       with:
         fetch-depth: ${{ inputs.fetch_depth }}
