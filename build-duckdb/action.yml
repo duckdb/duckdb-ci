@@ -52,9 +52,9 @@ runs:
       uses: actions/cache/restore@v5
       with:
         path: ${{ github.workspace }}/vcpkg-cache
-        key: vcpkg-${{ runner.os }}-${{ hashFiles(format('{0}/build/extension_configuration/vcpkg.json', inputs.working-directory)) }}
+        key: vcpkg-${{ runner.os }}-${{ inputs.build-type }}-${{ hashFiles(format('{0}/build/extension_configuration/vcpkg.json', inputs.working-directory)) }}
         restore-keys: |
-          vcpkg-${{ runner.os }}-
+          vcpkg-${{ runner.os }}-${{ inputs.build-type }}-
 
     - name: Setup vcpkg
       if: ${{ inputs.vcpkg-commit != '' }}
