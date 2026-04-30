@@ -24,6 +24,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
   lint:
+    name: Lint
     runs-on: namespace-profile-linux-small
     steps:
       - name: Checkout repository
@@ -41,7 +42,7 @@ jobs:
           ./actionlint -color
 
   test-checkout:
-    name: test-checkout (${{ matrix.runner_provider }}, ${{ matrix.runs_on }})
+    name: Test checkout (${{ matrix.runner_provider }}, ${{ matrix.runs_on }})
 
     needs:
       - lint
@@ -78,7 +79,7 @@ jobs:
           test "$(git -C test rev-parse HEAD)" = "${{ github.sha }}"
 
   test-build-duckdb:
-    name: test-build-duckdb (${{ matrix.name }})
+    name: Test build-duckdb (${{ matrix.name }})
     runs-on: namespace-profile-linux-x64
     needs:
       - prepare
