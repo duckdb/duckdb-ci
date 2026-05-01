@@ -7,21 +7,120 @@ on:
       - main
   workflow_dispatch:
 
+permissions:
+  contents: read
+  packages: write
+
 jobs:
   prepare:
     name: Prepare
     runs-on: namespace-profile-linux-small
 
     outputs:
-      VCPKG_COMMIT: ${{ steps.config.outputs.VCPKG_COMMIT }}
+      vcpkg_commit: ${{ steps.config.outputs.vcpkg_commit }}
+      docker_changed: ${{ steps.changed-files.outputs.any_changed }}
+      image_version: ${{ steps.config.outputs.image_version }}
 
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Detect docker changes
+        id: changed-files
+        uses: tj-actions/changed-files@v47
+        with:
+          files: |
+            docker/**
+
       - name: Config
         id: config
         run: |
+          image_version="$(date -u +%Y%m%d)-${GITHUB_SHA::8}"
           {
-            echo VCPKG_COMMIT=84bab45d415d22042bd0b9081aea57f362da3f35
+            echo vcpkg_commit=84bab45d415d22042bd0b9081aea57f362da3f35
+            echo image_version="${image_version}"
           } >> "$GITHUB_OUTPUT"
+
+  build-manylinux:
+    name: Build manylinux images (${{ matrix.arch }})
+    runs-on: ${{ matrix.runs_on }}
+    needs:
+      - prepare
+      - lint
+    if: ${{ needs.prepare.outputs.docker_changed == 'true' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runs_on: namespace-profile-linux-x64
+          - arch: aarch64
+            runs_on: namespace-profile-linux-arm64
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Login to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push cpp/rust/cuda images
+        env:
+          IMAGE_VERSION: ${{ needs.prepare.outputs.image_version }}
+          REPO_PREFIX: ghcr.io/${{ github.repository_owner }}/duckdb-ci
+        run: |
+          set -eux -o pipefail
+          ./docker/manylinux_2_28/build.sh "${{ matrix.arch }}"
+          docker push "${REPO_PREFIX}/manylinux_2_28_${{ matrix.arch }}_cpp:${IMAGE_VERSION}"
+          docker push "${REPO_PREFIX}/manylinux_2_28_${{ matrix.arch }}_rust:${IMAGE_VERSION}"
+          docker push "${REPO_PREFIX}/manylinux_2_28_${{ matrix.arch }}_cuda:${IMAGE_VERSION}"
+
+  test-manylinux-cpp:
+    name: Verify manylinux container (${{ matrix.arch }})
+    runs-on: ${{ matrix.runs_on }}
+    needs:
+      - prepare
+      - lint
+      - build-manylinux
+    if: ${{ needs.prepare.outputs.docker_changed == 'true' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runs_on: namespace-profile-linux-x64
+          - arch: aarch64
+            runs_on: namespace-profile-linux-arm64
+    container:
+      image: ghcr.io/${{ github.repository_owner }}/duckdb-ci/manylinux_2_28_${{ matrix.arch }}_cpp:${{ needs.prepare.outputs.image_version }}
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          path: duckdb-ci
+
+      - name: Checkout DuckDB
+        uses: ./duckdb-ci/.github/actions/checkout
+        with:
+          repository: duckdb/duckdb
+          path: duckdb
+          runner_provider: namespace
+          fetch_depth: "0"
+
+      - name: Verify image with build-duckdb action
+        uses: ./duckdb-ci/build-duckdb
+        with:
+          working-directory: duckdb
+          build: make release
+          vcpkg-commit: ${{ needs.prepare.outputs.vcpkg_commit }}
 
   lint:
     name: Lint
@@ -94,7 +193,7 @@ jobs:
 
           - name: Default release
             build: make release
-            vcpkg-commit: ${{ needs.prepare.outputs.VCPKG_COMMIT }}
+            vcpkg-commit: ${{ needs.prepare.outputs.vcpkg_commit }}
             verify: |
               set -eux -o pipefail
               ls -lh ${GITHUB_WORKSPACE}/vcpkg-cache
@@ -104,7 +203,7 @@ jobs:
             build: make release
             bundle: make release-artifact
             upload-name: linux-release
-            vcpkg-commit: ${{ needs.prepare.outputs.VCPKG_COMMIT }}
+            vcpkg-commit: ${{ needs.prepare.outputs.vcpkg_commit }}
             verify: |
               set -eux -o pipefail
               ls -lh ${GITHUB_WORKSPACE}/vcpkg-cache
@@ -238,6 +337,8 @@ jobs:
       - test-checkout
       - test-build-duckdb
       - test-bot
+      - build-manylinux
+      - test-manylinux-cpp
     runs-on: ubuntu-slim
     steps:
       - name: Check CI status
