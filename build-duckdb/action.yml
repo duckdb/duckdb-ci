@@ -27,6 +27,8 @@ inputs:
   cache:
     description: Whether to enable the vcpkg cache
     default: "true"
+  cache-suffix:
+     description: Suffix used to differentiate cache entry names.
   save-cache:
     description: Whether to save vcpkg cache.
     default: "true"

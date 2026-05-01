@@ -116,12 +116,18 @@ jobs:
           runner_provider: namespace
           fetch_depth: "0"
 
-      - name: Verify image with build-duckdb action
+      - name: Build DuckDB
         uses: ./duckdb-ci/build-duckdb
         with:
           working-directory: duckdb
           build: make release
           vcpkg-commit: ${{ needs.prepare.outputs.vcpkg_commit }}
+          cache-suffix: manylinux_2_28_${{ matrix.arch }}
+
+      - name: Test DuckDB
+        working-directory: duckdb
+        run:
+          ./build/release/duckdb -c "PRAGMA platform; PRAGMA version;"
 
   lint:
     name: Lint
