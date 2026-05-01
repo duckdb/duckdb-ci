@@ -1,0 +1,60 @@
+name: Prune Dev GHCR Images
+
+on:
+  schedule:
+    - cron: '0 7 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  prune-dev-images:
+    name: Prune _dev manylinux images
+    runs-on: ubuntu-latest
+    steps:
+      - name: Prune old _dev package versions
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          set -euo pipefail
+
+          api_base="/orgs/${OWNER}"
+          if ! gh api "${api_base}/packages?package_type=container&per_page=100" >/tmp/packages.json 2>/dev/null; then
+            api_base="/users/${OWNER}"
+            gh api "${api_base}/packages?package_type=container&per_page=100" >/tmp/packages.json
+          fi
+
+          mapfile -t packages < <(jq -r '.[].name | select(test("^duckdb-ci/manylinux_2_28_.*_dev$"))' /tmp/packages.json)
+
+          if [[ ${#packages[@]} -eq 0 ]]; then
+            echo "No matching _dev manylinux packages found; nothing to prune."
+            exit 0
+          fi
+
+          for pkg in "${packages[@]}"; do
+            pkg_encoded="$(printf '%s' "${pkg}" | jq -sRr @uri)"
+            versions_json="$(gh api "${api_base}/packages/container/${pkg_encoded}/versions?per_page=100")"
+
+            keep_id="$(jq -r 'sort_by(.created_at) | reverse | .[0].id // empty' <<<"${versions_json}")"
+            if [[ -z "${keep_id}" ]]; then
+              echo "No versions for ${pkg}; skipping"
+              continue
+            fi
+
+            echo "Keeping latest version id ${keep_id} for ${pkg}"
+
+            mapfile -t delete_ids < <(jq -r --arg keep "${keep_id}" 'sort_by(.created_at) | reverse | .[1:][]?.id | tostring | select(. != $keep)' <<<"${versions_json}")
+
+            if [[ ${#delete_ids[@]} -eq 0 ]]; then
+              echo "No old versions to delete for ${pkg}"
+              continue
+            fi
+
+            for id in "${delete_ids[@]}"; do
+              echo "Deleting ${pkg} version id ${id}"
+              gh api -X DELETE "${api_base}/packages/container/${pkg_encoded}/versions/${id}"
+            done
+          done

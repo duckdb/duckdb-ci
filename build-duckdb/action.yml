@@ -27,6 +27,8 @@ inputs:
   cache:
     description: Whether to enable the vcpkg cache
     default: "true"
+  cache-suffix:
+     description: Suffix used to differentiate cache entry names.
   save-cache:
     description: Whether to save vcpkg cache.
     default: "true"
@@ -52,9 +54,9 @@ runs:
       uses: actions/cache/restore@v5
       with:
         path: ${{ github.workspace }}/vcpkg-cache
-        key: vcpkg-${{ runner.os }}-${{ inputs.build-type }}-${{ hashFiles(format('{0}/build/extension_configuration/vcpkg.json', inputs.working-directory)) }}
+        key: vcpkg-${{ runner.os }}-${{ inputs.build-type }}-${{ inputs.cache-suffix }}-${{ hashFiles(format('{0}/build/extension_configuration/vcpkg.json', inputs.working-directory)) }}
         restore-keys: |
-          vcpkg-${{ runner.os }}-${{ inputs.build-type }}-
+          vcpkg-${{ runner.os }}-${{ inputs.build-type }}-${{ inputs.cache-suffix }}-
 
     - name: Setup vcpkg
       if: ${{ inputs.vcpkg-commit != '' }}
