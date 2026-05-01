@@ -24,6 +24,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
   lint:
+    name: Lint
     runs-on: namespace-profile-linux-small
     steps:
       - name: Checkout repository
@@ -41,7 +42,7 @@ jobs:
           ./actionlint -color
 
   test-checkout:
-    name: test-checkout (${{ matrix.runner_provider }}, ${{ matrix.runs_on }})
+    name: Test checkout (${{ matrix.runner_provider }}, ${{ matrix.runs_on }})
 
     needs:
       - lint
@@ -78,7 +79,7 @@ jobs:
           test "$(git -C test rev-parse HEAD)" = "${{ github.sha }}"
 
   test-build-duckdb:
-    name: test-build-duckdb (${{ matrix.name }})
+    name: Test build-duckdb (${{ matrix.name }})
     runs-on: namespace-profile-linux-x64
     needs:
       - prepare
@@ -151,6 +152,84 @@ jobs:
         working-directory: duckdb
         run: ${{ matrix.verify }}
 
+  test-bot:
+    name: Test Bot
+    runs-on: ubuntu-latest
+    needs:
+      - lint
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: bot/go.mod
+          cache-dependency-path: bot/go.sum
+
+      - name: Build
+        working-directory: bot
+        run: make image
+
+      - name: Test
+        working-directory: bot
+        run: make test
+
+      - name: Test image
+        working-directory: bot
+        run: |
+          set -euo pipefail
+          KEY_PATH="${RUNNER_TEMP}/bot-app.pem"
+          openssl genrsa -out "${KEY_PATH}" 2048
+          chmod 644 "${KEY_PATH}"
+          PORT=18080
+          CONTAINER_NAME="bot-server-test"
+
+          docker run -d \
+            --name "${CONTAINER_NAME}" \
+            -p "${PORT}:${PORT}" \
+            -e GITHUB_WEBHOOK_SECRET=test-secret \
+            -e GITHUB_APP_ID=1 \
+            -e GITHUB_APP_PRIVATE_KEY_PATH=/run/secrets/bot-app.pem \
+            -e PORT="${PORT}" \
+            -v "${KEY_PATH}:/run/secrets/bot-app.pem:ro" \
+            duckdb-ci-bot:ci
+
+          container_exists() {
+            docker container inspect "${CONTAINER_NAME}" >/dev/null 2>&1
+          }
+
+          # Show container logs in background
+          sleep 1
+          docker logs -f "${CONTAINER_NAME}" &
+          LOG_FOLLOW_PID=$!
+
+          cleanup() {
+            kill "${LOG_FOLLOW_PID}" 2>/dev/null || true
+            if container_exists; then
+              docker stop "${CONTAINER_NAME}" >/dev/null 2>&1 || true
+              docker rm -f "${CONTAINER_NAME}" >/dev/null 2>&1 || true
+            fi
+          }
+          trap cleanup EXIT
+
+          # Verify container responds to incoming HTTP requests.
+          code=""
+          for _ in {1..10}; do
+            code="$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:${PORT}/webhook" || true)"
+            echo "got HTTP code: ${code}"
+            if [ "${code}" = "405" ]; then
+              break
+            fi
+            sleep 1
+          done
+
+          if [ "${code}" != "405" ]; then
+            echo "bot container did not become ready"
+            exit 1
+          fi
+
   summary:
     name: Summary
     if: ${{ always() }}
@@ -158,6 +237,7 @@ jobs:
       - lint
       - test-checkout
       - test-build-duckdb
+      - test-bot
     runs-on: ubuntu-slim
     steps:
       - name: Check CI status
