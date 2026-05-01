@@ -23,6 +23,7 @@ fi
 CUDA_VERSION="13"
 BASE_IMAGE="manylinux_2_28"
 REPO_PREFIX="${REPO_PREFIX:-duckdb-ci}"
+IMAGE_SUFFIX="${IMAGE_SUFFIX:-}"
 TOOLCHAINS_INPUT="${TOOLCHAINS:-cpp rust cuda}"
 read -r -a TOOLCHAINS <<< "${TOOLCHAINS_INPUT}"
 
@@ -42,8 +43,8 @@ build_image() {
 build_toolchain() {
 	local toolchain="$1"
 	local root="docker/${BASE_IMAGE}/${ARCH}"
-	local repo="${REPO_PREFIX}/${BASE_IMAGE}_${ARCH}_${toolchain}"
-	local cpp_repo="${REPO_PREFIX}/${BASE_IMAGE}_${ARCH}_cpp"
+	local repo="${REPO_PREFIX}/${BASE_IMAGE}_${ARCH}_${toolchain}${IMAGE_SUFFIX}"
+	local cpp_repo="${REPO_PREFIX}/${BASE_IMAGE}_${ARCH}_cpp${IMAGE_SUFFIX}"
 
 	case "${toolchain}" in
 		cpp)

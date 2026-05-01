@@ -20,6 +20,7 @@ jobs:
       vcpkg_commit: ${{ steps.config.outputs.vcpkg_commit }}
       docker_changed: ${{ steps.changed-files.outputs.any_changed }}
       image_version: ${{ steps.config.outputs.image_version }}
+      image_suffix: ${{ steps.config.outputs.image_suffix }}
 
     steps:
       - name: Checkout repository
@@ -36,9 +37,14 @@ jobs:
         id: config
         run: |
           image_version="$(date -u +%Y%m%d)-${GITHUB_SHA::8}"
+          image_suffix=""
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            image_suffix="_dev"
+          fi
           {
             echo vcpkg_commit=84bab45d415d22042bd0b9081aea57f362da3f35
             echo image_version="${image_version}"
+            echo image_suffix="${image_suffix}"
           } >> "$GITHUB_OUTPUT"
 
   build-manylinux:
@@ -71,14 +77,15 @@ jobs:
       - name: Build and push cpp/rust/cuda images
         env:
           IMAGE_VERSION: ${{ needs.prepare.outputs.image_version }}
+          IMAGE_SUFFIX: ${{ needs.prepare.outputs.image_suffix }}
           REPO_PREFIX: ghcr.io/${{ github.repository_owner }}/duckdb-ci
         run: |
           set -eux -o pipefail
-          TOOLCHAINS="cpp" ./docker/manylinux_2_28/build.sh "${{ matrix.arch }}"
-          docker push "${REPO_PREFIX}/manylinux_2_28_${{ matrix.arch }}_cpp:${IMAGE_VERSION}"
-          TOOLCHAINS="rust cuda" ./docker/manylinux_2_28/build.sh "${{ matrix.arch }}"
-          docker push "${REPO_PREFIX}/manylinux_2_28_${{ matrix.arch }}_rust:${IMAGE_VERSION}"
-          docker push "${REPO_PREFIX}/manylinux_2_28_${{ matrix.arch }}_cuda:${IMAGE_VERSION}"
+          IMAGE_SUFFIX="${IMAGE_SUFFIX}" TOOLCHAINS="cpp" ./docker/manylinux_2_28/build.sh "${{ matrix.arch }}"
+          docker push "${REPO_PREFIX}/manylinux_2_28_${{ matrix.arch }}_cpp${IMAGE_SUFFIX}:${IMAGE_VERSION}"
+          IMAGE_SUFFIX="${IMAGE_SUFFIX}" TOOLCHAINS="rust cuda" ./docker/manylinux_2_28/build.sh "${{ matrix.arch }}"
+          docker push "${REPO_PREFIX}/manylinux_2_28_${{ matrix.arch }}_rust${IMAGE_SUFFIX}:${IMAGE_VERSION}"
+          docker push "${REPO_PREFIX}/manylinux_2_28_${{ matrix.arch }}_cuda${IMAGE_SUFFIX}:${IMAGE_VERSION}"
 
   test-manylinux-cpp:
     name: Verify manylinux container (${{ matrix.arch }})
@@ -97,7 +104,7 @@ jobs:
           - arch: aarch64
             runs_on: namespace-profile-linux-arm64
     container:
-      image: ghcr.io/${{ github.repository_owner }}/duckdb-ci/manylinux_2_28_${{ matrix.arch }}_cpp:${{ needs.prepare.outputs.image_version }}
+      image: ghcr.io/${{ github.repository_owner }}/duckdb-ci/manylinux_2_28_${{ matrix.arch }}_cpp${{ needs.prepare.outputs.image_suffix }}:${{ needs.prepare.outputs.image_version }}
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
@@ -129,7 +136,7 @@ jobs:
           working-directory: duckdb
           build: make release
           vcpkg-commit: ${{ needs.prepare.outputs.vcpkg_commit }}
-          cache-suffix: manylinux_2_28_${{ matrix.arch }}
+          cache-suffix: manylinux_2_28_${{ matrix.arch }}${{ needs.prepare.outputs.image_suffix }}
 
       - name: Test DuckDB
         working-directory: duckdb
