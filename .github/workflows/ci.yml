@@ -116,6 +116,13 @@ jobs:
           runner_provider: namespace
           fetch_depth: "0"
 
+      - name: Setup ccache
+        uses: hendrikmuhs/ccache-action@v1.2.23
+        with:
+          max-size: 5GB
+          evict-old-files: 'job'
+          key: ccache-manylinux_2_28_${{ matrix.arch }}
+
       - name: Build DuckDB
         uses: ./duckdb-ci/build-duckdb
         with:
