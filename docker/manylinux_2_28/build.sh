@@ -23,7 +23,8 @@ fi
 CUDA_VERSION="13"
 BASE_IMAGE="manylinux_2_28"
 REPO_PREFIX="${REPO_PREFIX:-duckdb-ci}"
-TOOLCHAINS=(cpp rust cuda)
+TOOLCHAINS_INPUT="${TOOLCHAINS:-cpp rust cuda}"
+read -r -a TOOLCHAINS <<< "${TOOLCHAINS_INPUT}"
 
 build_image() {
 	local repo="$1"

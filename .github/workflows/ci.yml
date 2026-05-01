@@ -74,8 +74,9 @@ jobs:
           REPO_PREFIX: ghcr.io/${{ github.repository_owner }}/duckdb-ci
         run: |
           set -eux -o pipefail
-          ./docker/manylinux_2_28/build.sh "${{ matrix.arch }}"
+          TOOLCHAINS="cpp" ./docker/manylinux_2_28/build.sh "${{ matrix.arch }}"
           docker push "${REPO_PREFIX}/manylinux_2_28_${{ matrix.arch }}_cpp:${IMAGE_VERSION}"
+          TOOLCHAINS="rust cuda" ./docker/manylinux_2_28/build.sh "${{ matrix.arch }}"
           docker push "${REPO_PREFIX}/manylinux_2_28_${{ matrix.arch }}_rust:${IMAGE_VERSION}"
           docker push "${REPO_PREFIX}/manylinux_2_28_${{ matrix.arch }}_cuda:${IMAGE_VERSION}"
 
