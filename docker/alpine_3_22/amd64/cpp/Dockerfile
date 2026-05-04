@@ -2,7 +2,7 @@ FROM alpine:3.22
 COPY docker/cpp_packages.txt /tmp/cpp_packages.txt
 
 # Common environment variables and mounts.
-ENV GEN=ninja
+ENV GEN=ninja DUCKDB_PLATFORM=linux_amd64_musl
 VOLUME /build
 WORKDIR /build
 
