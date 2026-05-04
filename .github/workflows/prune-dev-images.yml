@@ -11,15 +11,15 @@ permissions:
 
 jobs:
   prune-dev-images:
-    name: Prune _dev manylinux images
-    runs-on: ubuntu-latest
+    name: Prune dev images
+    runs-on: ubuntu-slim
     steps:
       - name: Prune old _dev package versions
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           OWNER: ${{ github.repository_owner }}
         run: |
-          set -euo pipefail
+          set -exuo pipefail
 
           api_base="/orgs/${OWNER}"
           if ! gh api "${api_base}/packages?package_type=container&per_page=100" >/tmp/packages.json 2>/dev/null; then
