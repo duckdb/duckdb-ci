@@ -22,7 +22,7 @@ runs:
   steps:
     - name: Checkout (Namespace)
       id: namespace_checkout
-      if: inputs.runner_provider == 'namespace' && runner.os != 'Windows'
+      if: inputs.runner_provider == 'namespace' && runner.os != 'Windows' && env.NSC_GIT_MIRROR != ''
       uses: namespacelabs/nscloud-checkout-action@v8
       with:
         fetch-depth: ${{ inputs.fetch_depth }}
@@ -35,9 +35,8 @@ runs:
         GIT_CONFIG_VALUE_0: 16
       continue-on-error: true
 
-    # Fallback to GitHub's checkout when namespace checkout is unavailable or
-    # fails. For example, Windows does not support namespace's git mirror (yet),
-    # so the namespace step is skipped.
+    # Fallback to GitHub's checkout when namespace checkout is unavailable,
+    # skipped (e.g. Windows, missing NSC_GIT_MIRROR), or fails.
     - name: Checkout (GitHub)
       if: inputs.runner_provider == 'github' || steps.namespace_checkout.outcome != 'success'
       uses: actions/checkout@v6
