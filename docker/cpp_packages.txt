@@ -1,0 +1,11 @@
+# Packages shared by all cpp images
+ca-certificates
+curl
+git
+jq
+libtool
+tar
+unzip
+wget
+xz
+zip

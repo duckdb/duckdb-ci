@@ -1,4 +1,5 @@
 FROM quay.io/pypa/manylinux_2_28_x86_64
+COPY docker/cpp_packages.txt /tmp/cpp_packages.txt
 
 ARG CMAKE_VERSION=4.3.2
 ARG CCACHE_VERSION=4.13.5
@@ -14,19 +15,11 @@ ENV CCACHE_DIR=/ccache
 
 # Minimal C/C++ build dependencies.
 RUN set -eux; \
+    common_packages="$(grep -vE '^\s*(#|$)' /tmp/cpp_packages.txt | tr '\n' ' ')"; \
     dnf groupinstall -y "Development Tools"; \
     dnf install -y \
-      ca-certificates \
-      curl \
-      git \
-      jq \
-      libtool \
-      ninja-build \
-      tar \
-      unzip \
-      wget \
-      xz \
-      zip; \
+      ${common_packages} \
+      ninja-build; \
     mkdir -p /tmp/ccache && cd /tmp/ccache; \
     wget "https://github.com/ccache/ccache/releases/download/v${CCACHE_VERSION}/ccache-${CCACHE_VERSION}-linux-x86_64-musl-static.tar.xz"; \
     tar -xf "ccache-${CCACHE_VERSION}-linux-x86_64-musl-static.tar.xz"; \

@@ -48,20 +48,20 @@ build_toolchain() {
 
 	case "${toolchain}" in
 		cpp)
-			build_image "${repo}" "${root}/cpp/Dockerfile" "${root}/cpp"
+			build_image "${repo}" "${root}/cpp/Dockerfile" "."
 			;;
 		rust)
 			build_image \
 				"${repo}" \
 				"${root}/rust/Dockerfile" \
-				"${root}/rust" \
+				"." \
 				--build-arg "CPP_IMAGE=${cpp_repo}:${IMAGE_VERSION}"
 			;;
 		cuda)
 			build_image \
 				"${repo}" \
 				"${root}/cuda/Dockerfile" \
-				"${root}/cuda" \
+				"." \
 				--build-arg "CPP_IMAGE=${cpp_repo}:${IMAGE_VERSION}" \
 				--build-arg "CUDA_VERSION=${CUDA_VERSION}"
 			;;
