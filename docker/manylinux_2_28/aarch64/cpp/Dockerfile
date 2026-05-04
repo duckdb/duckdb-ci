@@ -15,11 +15,14 @@ ENV CCACHE_DIR=/ccache
 
 # Minimal C/C++ build dependencies.
 RUN set -eux; \
-    common_packages="$(grep -vE '^\s*(#|$)' /tmp/cpp_packages.txt | tr '\n' ' ')"; \
+    common_packages="$(awk ' \
+      /^[[:space:]]*($|#)/ { next } \
+      /#[[:space:]]*alpine[[:space:]]*$$/ { next } \
+      { sub(/[[:space:]]*#[[:space:]]*manylinux[[:space:]]*$$/, ""); print } \
+    ' /tmp/cpp_packages.txt | tr '\n' ' ')"; \
     dnf groupinstall -y "Development Tools"; \
     dnf install -y \
-      ${common_packages} \
-      ninja-build; \
+      ${common_packages}; \
     mkdir -p /tmp/ccache && cd /tmp/ccache; \
     wget -nv "https://github.com/ccache/ccache/releases/download/v${CCACHE_VERSION}/ccache-${CCACHE_VERSION}-linux-aarch64-musl-static.tar.xz"; \
     tar -xf "ccache-${CCACHE_VERSION}-linux-aarch64-musl-static.tar.xz"; \
