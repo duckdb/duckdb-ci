@@ -31,6 +31,8 @@ jobs:
               ;;
           esac
 
+          gh api --paginate "${api_base}/packages?package_type=docker&per_page=100" --jq '.[] | .name'
+
           mapfile -t packages < <(
             gh api --paginate "${api_base}/packages?package_type=docker&per_page=100" \
               --jq '.[] | .name | select(test("^duckdb-ci/.+_dev$"))'
