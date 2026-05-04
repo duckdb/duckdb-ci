@@ -17,21 +17,10 @@ jobs:
       - name: Prune old _dev package versions
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          OWNER: ${{ github.repository_owner }}
         run: |
           set -exuo pipefail
 
-          owner_type="$(gh api "/users/${OWNER}" --jq .type)"
-          case "${owner_type}" in
-            Organization) api_base="/orgs/${OWNER}" ;;
-            User) api_base="/users/${OWNER}" ;;
-            *)
-              echo "Unsupported owner type '${owner_type}' for '${OWNER}'" >&2
-              exit 1
-              ;;
-          esac
-
-          gh api --paginate "${api_base}/packages?package_type=docker&per_page=100" --jq '.[] | .name'
+          api_base="/user"
 
           mapfile -t packages < <(
             gh api --paginate "${api_base}/packages?package_type=docker&per_page=100" \
