@@ -47,8 +47,8 @@ jobs:
             echo image_suffix="${image_suffix}"
           } >> "$GITHUB_OUTPUT"
 
-  build-manylinux:
-    name: Build manylinux images (${{ matrix.arch }})
+  build-images:
+    name: Build images (${{ matrix.distro }}, ${{ matrix.arch }})
     runs-on: ${{ matrix.runs_on }}
     needs:
       - prepare
@@ -58,10 +58,22 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - arch: amd64
+          - distro: manylinux_2_28
+            arch: amd64
             runs_on: namespace-profile-linux-x64
-          - arch: aarch64
+            toolchains: cpp rust cuda
+          - distro: manylinux_2_28
+            arch: aarch64
             runs_on: namespace-profile-linux-arm64
+            toolchains: cpp rust cuda
+          - distro: alpine_3_22
+            arch: amd64
+            runs_on: namespace-profile-linux-x64
+            toolchains: cpp rust
+          - distro: alpine_3_22
+            arch: aarch64
+            runs_on: namespace-profile-linux-arm64
+            toolchains: cpp rust
 
     steps:
       - name: Checkout repository
@@ -74,37 +86,50 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push cpp/rust/cuda images
+      - name: Build and push image variants
         env:
           IMAGE_VERSION: ${{ needs.prepare.outputs.image_version }}
           IMAGE_SUFFIX: ${{ needs.prepare.outputs.image_suffix }}
           REPO_PREFIX: ghcr.io/${{ github.repository_owner }}/duckdb-ci
         run: |
           set -eux -o pipefail
-          IMAGE_SUFFIX="${IMAGE_SUFFIX}" TOOLCHAINS="cpp" ./docker/manylinux_2_28/build.sh "${{ matrix.arch }}"
-          docker push "${REPO_PREFIX}/manylinux_2_28_${{ matrix.arch }}_cpp${IMAGE_SUFFIX}:${IMAGE_VERSION}"
-          IMAGE_SUFFIX="${IMAGE_SUFFIX}" TOOLCHAINS="rust cuda" ./docker/manylinux_2_28/build.sh "${{ matrix.arch }}"
-          docker push "${REPO_PREFIX}/manylinux_2_28_${{ matrix.arch }}_rust${IMAGE_SUFFIX}:${IMAGE_VERSION}"
-          docker push "${REPO_PREFIX}/manylinux_2_28_${{ matrix.arch }}_cuda${IMAGE_SUFFIX}:${IMAGE_VERSION}"
+          # Push cpp first so remote builders can pull it as the base image for dependent toolchains.
+          IMAGE_SUFFIX="${IMAGE_SUFFIX}" TOOLCHAINS="cpp" "./docker/${{ matrix.distro }}/build.sh" "${{ matrix.arch }}"
+          docker push "${REPO_PREFIX}/${{ matrix.distro }}_${{ matrix.arch }}_cpp${IMAGE_SUFFIX}:${IMAGE_VERSION}"
+          IMAGE_SUFFIX="${IMAGE_SUFFIX}" TOOLCHAINS="${{ matrix.toolchains }}" "./docker/${{ matrix.distro }}/build.sh" "${{ matrix.arch }}"
+          for toolchain in ${{ matrix.toolchains }}; do
+            if [[ "${toolchain}" == "cpp" ]]; then
+              continue
+            fi
+            docker push "${REPO_PREFIX}/${{ matrix.distro }}_${{ matrix.arch }}_${toolchain}${IMAGE_SUFFIX}:${IMAGE_VERSION}"
+          done
 
-  test-manylinux-cpp:
-    name: Verify manylinux container (${{ matrix.arch }})
+  test-image-cpp:
+    name: Verify container (${{ matrix.distro }}, ${{ matrix.arch }})
     runs-on: ${{ matrix.runs_on }}
     needs:
       - prepare
       - lint
-      - build-manylinux
+      - build-images
     if: ${{ needs.prepare.outputs.docker_changed == 'true' }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - arch: amd64
+          - distro: manylinux_2_28
+            arch: amd64
             runs_on: namespace-profile-linux-x64
-          - arch: aarch64
+          - distro: manylinux_2_28
+            arch: aarch64
+            runs_on: namespace-profile-linux-arm64
+          - distro: alpine_3_22
+            arch: amd64
+            runs_on: namespace-profile-linux-x64
+          - distro: alpine_3_22
+            arch: aarch64
             runs_on: namespace-profile-linux-arm64
     container:
-      image: ghcr.io/${{ github.repository_owner }}/duckdb-ci/manylinux_2_28_${{ matrix.arch }}_cpp${{ needs.prepare.outputs.image_suffix }}:${{ needs.prepare.outputs.image_version }}
+      image: ghcr.io/${{ github.repository_owner }}/duckdb-ci/${{ matrix.distro }}_${{ matrix.arch }}_cpp${{ needs.prepare.outputs.image_suffix }}:${{ needs.prepare.outputs.image_version }}
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
@@ -128,7 +153,7 @@ jobs:
         with:
           max-size: 5GB
           evict-old-files: 'job'
-          key: ccache-manylinux_2_28_${{ matrix.arch }}
+          key: ccache-${{ matrix.distro }}_${{ matrix.arch }}
 
       - name: Build DuckDB
         uses: ./duckdb-ci/build-duckdb
@@ -136,7 +161,7 @@ jobs:
           working-directory: duckdb
           build: make release
           vcpkg-commit: ${{ needs.prepare.outputs.vcpkg_commit }}
-          cache-suffix: manylinux_2_28_${{ matrix.arch }}${{ needs.prepare.outputs.image_suffix }}
+          cache-suffix: ${{ matrix.distro }}_${{ matrix.arch }}${{ needs.prepare.outputs.image_suffix }}
 
       - name: Test DuckDB
         working-directory: duckdb
@@ -358,8 +383,8 @@ jobs:
       - test-checkout
       - test-build-duckdb
       - test-bot
-      - build-manylinux
-      - test-manylinux-cpp
+      - build-images
+      - test-image-cpp
     runs-on: ubuntu-slim
     steps:
       - name: Check CI status
