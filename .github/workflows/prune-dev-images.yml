@@ -31,18 +31,23 @@ jobs:
               ;;
           esac
 
-          gh api "${api_base}/packages?package_type=container&per_page=100" >/tmp/packages.json
+          mapfile -t packages < <(
+            gh api --paginate "${api_base}/packages?package_type=docker&per_page=100" \
+              --jq '.[] | .name | select(test("^duckdb-ci/.+_dev$"))'
+          )
 
-          mapfile -t package_urls < <(jq -r '.[] | select(.name | test("^duckdb-ci/manylinux_2_28_.*_dev$")) | .url' /tmp/packages.json)
-
-          if [[ ${#package_urls[@]} -eq 0 ]]; then
-            echo "No matching _dev manylinux packages found; nothing to prune."
+          if [[ ${#packages[@]} -eq 0 ]]; then
+            echo "No matching _dev packages found in duckdb/duckdb-ci; nothing to prune."
             exit 0
           fi
 
-          for package_url in "${package_urls[@]}"; do
-            pkg_name="$(gh api "${package_url}" --jq .name)"
-            versions_json="$(gh api "${package_url}/versions?per_page=100")"
+          for pkg_name in "${packages[@]}"; do
+            pkg_encoded="$(printf '%s' "${pkg_name}" | jq -sRr @uri)"
+            versions_endpoint="${api_base}/packages/container/${pkg_encoded}/versions?per_page=100"
+            if ! versions_json="$(gh api "${versions_endpoint}" 2>/dev/null)"; then
+              echo "Package ${pkg_name} not found or not accessible; skipping"
+              continue
+            fi
 
             keep_id="$(jq -r 'sort_by(.created_at) | reverse | .[0].id // empty' <<<"${versions_json}")"
             if [[ -z "${keep_id}" ]]; then
@@ -61,6 +66,6 @@ jobs:
 
             for id in "${delete_ids[@]}"; do
               echo "Deleting ${pkg_name} version id ${id}"
-              gh api -X DELETE "${package_url}/versions/${id}"
+              gh api -X DELETE "${api_base}/packages/container/${pkg_encoded}/versions/${id}"
             done
           done
