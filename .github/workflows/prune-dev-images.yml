@@ -27,34 +27,34 @@ jobs:
             gh api "${api_base}/packages?package_type=container&per_page=100" >/tmp/packages.json
           fi
 
-          mapfile -t packages < <(jq -r '.[].name | select(test("^duckdb-ci/manylinux_2_28_.*_dev$"))' /tmp/packages.json)
+          mapfile -t package_urls < <(jq -r '.[] | select(.name | test("^duckdb-ci/manylinux_2_28_.*_dev$")) | .url' /tmp/packages.json)
 
-          if [[ ${#packages[@]} -eq 0 ]]; then
+          if [[ ${#package_urls[@]} -eq 0 ]]; then
             echo "No matching _dev manylinux packages found; nothing to prune."
             exit 0
           fi
 
-          for pkg in "${packages[@]}"; do
-            pkg_encoded="$(printf '%s' "${pkg}" | jq -sRr @uri)"
-            versions_json="$(gh api "${api_base}/packages/container/${pkg_encoded}/versions?per_page=100")"
+          for package_url in "${package_urls[@]}"; do
+            pkg_name="$(gh api "${package_url}" --jq .name)"
+            versions_json="$(gh api "${package_url}/versions?per_page=100")"
 
             keep_id="$(jq -r 'sort_by(.created_at) | reverse | .[0].id // empty' <<<"${versions_json}")"
             if [[ -z "${keep_id}" ]]; then
-              echo "No versions for ${pkg}; skipping"
+              echo "No versions for ${pkg_name}; skipping"
               continue
             fi
 
-            echo "Keeping latest version id ${keep_id} for ${pkg}"
+            echo "Keeping latest version id ${keep_id} for ${pkg_name}"
 
             mapfile -t delete_ids < <(jq -r --arg keep "${keep_id}" 'sort_by(.created_at) | reverse | .[1:][]?.id | tostring | select(. != $keep)' <<<"${versions_json}")
 
             if [[ ${#delete_ids[@]} -eq 0 ]]; then
-              echo "No old versions to delete for ${pkg}"
+              echo "No old versions to delete for ${pkg_name}"
               continue
             fi
 
             for id in "${delete_ids[@]}"; do
-              echo "Deleting ${pkg} version id ${id}"
-              gh api -X DELETE "${api_base}/packages/container/${pkg_encoded}/versions/${id}"
+              echo "Deleting ${pkg_name} version id ${id}"
+              gh api -X DELETE "${package_url}/versions/${id}"
             done
           done
