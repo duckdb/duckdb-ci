@@ -4,6 +4,6 @@ FROM ${CPP_IMAGE}
 # Configure Rust.
 ENV PATH="/root/.cargo/bin:${PATH}"
 RUN set -eux; \
-    curl https://sh.rustup.rs -sSf | sh -s -- -y; \
+    curl --silent --show-error --fail --location https://sh.rustup.rs | sh -s -- -y; \
     rustc --version; \
     cargo --version

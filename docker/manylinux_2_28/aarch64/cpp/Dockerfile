@@ -21,7 +21,7 @@ RUN set -eux; \
       ${common_packages} \
       ninja-build; \
     mkdir -p /tmp/ccache && cd /tmp/ccache; \
-    wget "https://github.com/ccache/ccache/releases/download/v${CCACHE_VERSION}/ccache-${CCACHE_VERSION}-linux-aarch64-musl-static.tar.xz"; \
+    wget -nv "https://github.com/ccache/ccache/releases/download/v${CCACHE_VERSION}/ccache-${CCACHE_VERSION}-linux-aarch64-musl-static.tar.xz"; \
     tar -xf "ccache-${CCACHE_VERSION}-linux-aarch64-musl-static.tar.xz"; \
     install -m 0755 "ccache-${CCACHE_VERSION}-linux-aarch64-musl-static/ccache" /usr/local/bin/ccache; \
     cd /; \
@@ -30,7 +30,7 @@ RUN set -eux; \
     ccache --version | awk 'NR==1 { split($3, v, "."); if (v[1] != 4) exit 1 }'; \
     dnf install -y gcc-toolset-14-gcc gcc-toolset-14-gcc-c++ gcc-toolset-14-binutils; \
     mkdir -p /tmp/cmake && cd /tmp/cmake; \
-    wget "https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION}/cmake-${CMAKE_VERSION}-linux-aarch64.sh"; \
+    wget -nv "https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION}/cmake-${CMAKE_VERSION}-linux-aarch64.sh"; \
     chmod +x "cmake-${CMAKE_VERSION}-linux-aarch64.sh"; \
     ./"cmake-${CMAKE_VERSION}-linux-aarch64.sh" --skip-license --prefix=/usr/local; \
     cmake --version; \
