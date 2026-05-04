@@ -135,13 +135,6 @@ jobs:
         password: ${{ secrets.GITHUB_TOKEN }}
 
     steps:
-      - run: |
-          ls -lh /lib || true
-          ls -lh /__e/ || true
-          ls -lh /__e/node24 || true
-          ls -lh /__e/node24/bin || true
-          ls -lh /__e/node24/bin/node || true
-          ldd /__e/node24/bin/node || true
       - name: Checkout
         uses: actions/checkout@v6
         with:
