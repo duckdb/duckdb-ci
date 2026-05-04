@@ -4,6 +4,7 @@ curl
 git
 jq
 libtool
+mold
 python3
 ninja # alpine
 ninja-build # manylinux
