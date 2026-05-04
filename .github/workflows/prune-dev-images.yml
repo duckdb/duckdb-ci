@@ -21,11 +21,17 @@ jobs:
         run: |
           set -exuo pipefail
 
-          api_base="/orgs/${OWNER}"
-          if ! gh api "${api_base}/packages?package_type=container&per_page=100" >/tmp/packages.json 2>/dev/null; then
-            api_base="/users/${OWNER}"
-            gh api "${api_base}/packages?package_type=container&per_page=100" >/tmp/packages.json
-          fi
+          owner_type="$(gh api "/users/${OWNER}" --jq .type)"
+          case "${owner_type}" in
+            Organization) api_base="/orgs/${OWNER}" ;;
+            User) api_base="/users/${OWNER}" ;;
+            *)
+              echo "Unsupported owner type '${owner_type}' for '${OWNER}'" >&2
+              exit 1
+              ;;
+          esac
+
+          gh api "${api_base}/packages?package_type=container&per_page=100" >/tmp/packages.json
 
           mapfile -t package_urls < <(jq -r '.[] | select(.name | test("^duckdb-ci/manylinux_2_28_.*_dev$")) | .url' /tmp/packages.json)
 
