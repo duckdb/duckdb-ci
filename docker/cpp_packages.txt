@@ -1,0 +1,19 @@
+# Packages shared by all cpp images
+ca-certificates
+curl
+git
+jq
+libtool
+mold
+python3
+ninja # alpine
+ninja-build # manylinux
+py3-requests # alpine
+python3-requests # manylinux
+py3-pytest # alpine
+python3-pytest # manylinux
+tar
+unzip
+wget
+xz
+zip

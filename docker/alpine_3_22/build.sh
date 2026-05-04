@@ -20,11 +20,10 @@ if [[ -z "${IMAGE_VERSION:-}" ]]; then
 	exit 1
 fi
 
-CUDA_VERSION="13"
-BASE_IMAGE="manylinux_2_28"
+BASE_IMAGE="alpine_3_22"
 REPO_PREFIX="${REPO_PREFIX:-duckdb-ci}"
 IMAGE_SUFFIX="${IMAGE_SUFFIX:-}"
-TOOLCHAINS_INPUT="${TOOLCHAINS:-cpp rust cuda}"
+TOOLCHAINS_INPUT="${TOOLCHAINS:-cpp rust}"
 read -r -a TOOLCHAINS <<< "${TOOLCHAINS_INPUT}"
 
 build_image() {
@@ -57,20 +56,11 @@ build_toolchain() {
 				"." \
 				--build-arg "CPP_IMAGE=${cpp_repo}:${IMAGE_VERSION}"
 			;;
-		cuda)
-			build_image \
-				"${repo}" \
-				"${root}/cuda/Dockerfile" \
-				"." \
-				--build-arg "CPP_IMAGE=${cpp_repo}:${IMAGE_VERSION}" \
-				--build-arg "CUDA_VERSION=${CUDA_VERSION}"
-			;;
 		*)
 			echo "Unknown toolchain: ${toolchain}" >&2
 			exit 1
 			;;
 	esac
-
 }
 
 main() {

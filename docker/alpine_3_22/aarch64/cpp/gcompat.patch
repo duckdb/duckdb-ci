@@ -1,0 +1,36 @@
+diff --git a/libgcompat/ucontext.c b/libgcompat/ucontext.c
+index 1e7618c..f598ff7 100644
+--- a/libgcompat/ucontext.c
++++ b/libgcompat/ucontext.c
+@@ -1,11 +1,31 @@
+ #include <errno.h> /* errno, ENOSYS */
++#include <stdlib.h>
+ 
+ #ifndef HAVE_LIBUCONTEXT
+ 
++// https://man7.org/linux/man-pages/man3/getcontext.3.html
+ int getcontext(void *ucp)
+ {
+ 	errno = ENOSYS;
+ 	return -1;
+ }
+ 
++int setcontext(void *ucp)
++{
++	errno = ENOSYS;
++	return -1;
++}
++
++// https://man7.org/linux/man-pages/man3/makecontext.3.html
++void makecontext(void *ucp, void *func, int argc, ...)
++{
++	abort();
++}
++
++int swapcontext(void *oucp, void* ucp)
++{
++	errno = ENOSYS;
++	return -1;
++}
++
+ #endif
