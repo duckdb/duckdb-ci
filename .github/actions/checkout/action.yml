@@ -25,6 +25,7 @@ runs:
       if: inputs.runner_provider == 'namespace' && runner.os != 'Windows'
       shell: bash
       run: |
+        # Detect git mirror
         if [ -n "${NSC_GIT_MIRROR:-}" ] && [ -e "${NSC_GIT_MIRROR}" ]; then
           echo "has_mirror=true" >> "$GITHUB_OUTPUT"
         else
