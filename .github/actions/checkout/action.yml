@@ -20,9 +20,20 @@ inputs:
 runs:
   using: "composite"
   steps:
+    - name: Detect
+      id: detect
+      if: inputs.runner_provider == 'namespace' && runner.os != 'Windows'
+      shell: bash
+      run: |
+        if [ -n "${NSC_GIT_MIRROR:-}" ] && [ -e "${NSC_GIT_MIRROR}" ]; then
+          echo "has_mirror=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "has_mirror=false" >> "$GITHUB_OUTPUT"
+        fi
+
     - name: Checkout (Namespace)
       id: namespace_checkout
-      if: inputs.runner_provider == 'namespace' && runner.os != 'Windows' && env.NSC_GIT_MIRROR != ''
+      if: inputs.runner_provider == 'namespace' && runner.os != 'Windows' && steps.detect.outputs.has_mirror == 'true'
       uses: namespacelabs/nscloud-checkout-action@v8
       with:
         fetch-depth: ${{ inputs.fetch_depth }}
