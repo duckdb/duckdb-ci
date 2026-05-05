@@ -36,6 +36,7 @@ COPY docker/packages.py /usr/local/bin/packages.py
 
 # Minimal C/C++ build dependencies.
 RUN set -eux; \
+    apk add --no-cache python3; \
     common_packages="$(python3 /usr/local/bin/packages.py list --distro alpine --packages-file /tmp/cpp_packages.txt)"; \
     apk add --no-cache \
       ${common_packages} \
