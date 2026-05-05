@@ -64,6 +64,7 @@ runs:
       env:
         FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
       with:
+        vcpkgDirectory: /vcpkg
         vcpkgGitCommitId: ${{ inputs.vcpkg-commit }}
         # Cache vcpkg binary to reduce impact of building from source on ARM.
         # TODO: caching logic is broken in run-vcpkg.
