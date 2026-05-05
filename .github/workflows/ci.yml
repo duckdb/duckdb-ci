@@ -54,8 +54,6 @@ jobs:
       - prepare
       - lint
     if: ${{ needs.prepare.outputs.docker_changed == 'true' }}
-    outputs:
-      pushed_images_json: ${{ steps.push-images.outputs.pushed_images_json }}
     strategy:
       fail-fast: false
       matrix:
@@ -89,20 +87,20 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push image variants
-        id: push-images
         env:
           IMAGE_VERSION: ${{ needs.prepare.outputs.image_version }}
           IMAGE_SUFFIX: ${{ needs.prepare.outputs.image_suffix }}
           REPO_PREFIX: ghcr.io/${{ github.repository_owner }}/duckdb-ci
         run: |
           set -eux -o pipefail
-          pushed_images=()
+          pushed_images_file="${RUNNER_TEMP}/pushed-images-${{ matrix.distro }}-${{ matrix.arch }}.txt"
+          : > "${pushed_images_file}"
 
           # Push cpp first so remote builders can pull it as the base image for dependent toolchains.
           IMAGE_SUFFIX="${IMAGE_SUFFIX}" TOOLCHAINS="cpp" "./docker/${{ matrix.distro }}/build.sh" "${{ matrix.arch }}"
           cpp_image="${REPO_PREFIX}/${{ matrix.distro }}_${{ matrix.arch }}_cpp${IMAGE_SUFFIX}:${IMAGE_VERSION}"
           docker push "${cpp_image}"
-          pushed_images+=("${cpp_image}")
+          echo "${cpp_image}" >> "${pushed_images_file}"
 
           IMAGE_SUFFIX="${IMAGE_SUFFIX}" TOOLCHAINS="${{ matrix.toolchains }}" "./docker/${{ matrix.distro }}/build.sh" "${{ matrix.arch }}"
           for toolchain in ${{ matrix.toolchains }}; do
@@ -111,13 +109,16 @@ jobs:
             fi
             image="${REPO_PREFIX}/${{ matrix.distro }}_${{ matrix.arch }}_${toolchain}${IMAGE_SUFFIX}:${IMAGE_VERSION}"
             docker push "${image}"
-            pushed_images+=("${image}")
+            echo "${image}" >> "${pushed_images_file}"
           done
 
-          key="${{ matrix.distro }}_${{ matrix.arch }}"
-          images_json="$(printf '%s\n' "${pushed_images[@]}" | jq -R . | jq -s -c .)"
-          payload="$(jq -cn --arg key "${key}" --argjson images "${images_json}" '{($key): $images}')"
-          echo "pushed_images_json=${payload}" >> "$GITHUB_OUTPUT"
+      - name: Upload pushed image list
+        if: ${{ needs.prepare.outputs.docker_changed == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: pushed-images-${{ matrix.distro }}-${{ matrix.arch }}
+          path: ${{ runner.temp }}/pushed-images-${{ matrix.distro }}-${{ matrix.arch }}.txt
+          if-no-files-found: error
 
   test-image-cpp:
     name: Verify container (${{ matrix.distro }}, ${{ matrix.arch }})
@@ -423,12 +424,15 @@ jobs:
 
       - name: Pushed Docker images
         if: ${{ needs.prepare.outputs.docker_changed == 'true' }}
+        uses: actions/download-artifact@v5
+        with:
+          pattern: pushed-images-*
+          merge-multiple: true
+          path: ${{ runner.temp }}/pushed-images
+
+      - name: Print pushed Docker images
+        if: ${{ needs.prepare.outputs.docker_changed == 'true' }}
         run: |
           set -euo pipefail
           echo "Pushed Docker images:"
-          jq -r '
-            .pushed_images_json
-            | fromjson
-            | to_entries[]
-            | .value[]
-          ' <<< '${{ toJSON(needs.build-images.outputs) }}' | sort
+          cat "${RUNNER_TEMP}/pushed-images/"*.txt | sort
