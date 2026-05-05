@@ -4,10 +4,6 @@ FROM ${CPP_IMAGE}
 COPY docker/main_packages.txt /tmp/main_packages.txt
 
 RUN set -eux; \
-    main_packages="$(awk ' \
-      /^[[:space:]]*($|#)/ { next } \
-      /#[[:space:]]*manylinux[[:space:]]*$$/ { next } \
-      { sub(/[[:space:]]*#[[:space:]]*alpine[[:space:]]*$$/, ""); print } \
-    ' /tmp/main_packages.txt | tr '\n' ' ')"; \
+    main_packages="$(filter-packages alpine /tmp/main_packages.txt)"; \
     apk add --no-cache \
       ${main_packages}

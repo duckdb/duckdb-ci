@@ -4,11 +4,7 @@ FROM ${CPP_IMAGE}
 COPY docker/main_packages.txt /tmp/main_packages.txt
 
 RUN set -eux; \
-    main_packages="$(awk ' \
-      /^[[:space:]]*($|#)/ { next } \
-      /#[[:space:]]*alpine[[:space:]]*$$/ { next } \
-      { sub(/[[:space:]]*#[[:space:]]*manylinux[[:space:]]*$$/, ""); print } \
-    ' /tmp/main_packages.txt | tr '\n' ' ')"; \
+    main_packages="$(filter-packages manylinux /tmp/main_packages.txt)"; \
     dnf install -y \
       ${main_packages}; \
     dnf clean all; \

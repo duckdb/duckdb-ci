@@ -32,14 +32,12 @@ VOLUME /ccache
 ENV CCACHE_DIR=/ccache
 
 COPY docker/cpp_packages.txt /tmp/cpp_packages.txt
+COPY docker/filter_packages.sh /usr/local/bin/filter-packages
 
 # Minimal C/C++ build dependencies.
 RUN set -eux; \
-    common_packages="$(awk ' \
-      /^[[:space:]]*($|#)/ { next } \
-      /#[[:space:]]*manylinux[[:space:]]*$$/ { next } \
-      { sub(/[[:space:]]*#[[:space:]]*alpine[[:space:]]*$$/, ""); print } \
-    ' /tmp/cpp_packages.txt | tr '\n' ' ')"; \
+    chmod +x /usr/local/bin/filter-packages; \
+    common_packages="$(filter-packages alpine /tmp/cpp_packages.txt)"; \
     apk add --no-cache \
       ${common_packages} \
       bash \

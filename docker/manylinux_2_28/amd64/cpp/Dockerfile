@@ -1,5 +1,6 @@
 FROM quay.io/pypa/manylinux_2_28_x86_64
 COPY docker/cpp_packages.txt /tmp/cpp_packages.txt
+COPY docker/filter_packages.sh /usr/local/bin/filter-packages
 
 ARG CMAKE_VERSION=4.3.2
 ARG CCACHE_VERSION=4.13.5
@@ -14,11 +15,8 @@ ENV CCACHE_DIR=/ccache
 
 # Minimal C/C++ build dependencies.
 RUN set -eux; \
-    common_packages="$(awk ' \
-      /^[[:space:]]*($|#)/ { next } \
-      /#[[:space:]]*alpine[[:space:]]*$$/ { next } \
-      { sub(/[[:space:]]*#[[:space:]]*manylinux[[:space:]]*$$/, ""); print } \
-    ' /tmp/cpp_packages.txt | tr '\n' ' ')"; \
+    chmod +x /usr/local/bin/filter-packages; \
+    common_packages="$(filter-packages manylinux /tmp/cpp_packages.txt)"; \
     dnf groupinstall -y "Development Tools"; \
     dnf install -y \
       ${common_packages}; \
