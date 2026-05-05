@@ -22,6 +22,9 @@ DONE
 
 FROM alpine:3.22
 COPY --from=gcompat /lib/libgcompat.so.0 /lib/ld-linux-aarch64.so.1 /lib/
+ARG CMAKE_VERSION
+ARG CCACHE_VERSION
+ARG VCPKG_COMMIT
 
 # Common environment variables and mounts.
 ENV GEN=ninja DUCKDB_PLATFORM=linux_arm64_musl
@@ -47,5 +50,10 @@ RUN set -eux; \
       libstdc++ \
     ; \
     python3 /usr/local/bin/packages.py check --distro alpine --packages-file /tmp/cpp_packages.txt; \
+    git clone "https://github.com/microsoft/vcpkg.git" /vcpkg; \
+    git -C /vcpkg checkout --force "${VCPKG_COMMIT}"; \
+    VCPKG_FORCE_SYSTEM_BINARIES=1 /vcpkg/bootstrap-vcpkg.sh; \
     sed -i "s:ID=alpine:ID=NotpineForGHA:" /etc/os-release; \
     ccache --version
+ENV VCPKG_ROOT=/vcpkg
+ENV VCPKG_TOOLCHAIN_PATH=/vcpkg/scripts/buildsystems/vcpkg.cmake

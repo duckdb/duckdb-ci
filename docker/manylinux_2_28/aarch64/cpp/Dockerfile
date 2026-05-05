@@ -2,8 +2,9 @@ FROM quay.io/pypa/manylinux_2_28_aarch64
 COPY docker/cpp_packages.txt /tmp/cpp_packages.txt
 COPY docker/packages.py /usr/local/bin/packages.py
 
-ARG CMAKE_VERSION=4.3.2
-ARG CCACHE_VERSION=4.13.5
+ARG CMAKE_VERSION
+ARG CCACHE_VERSION
+ARG VCPKG_COMMIT
 
 # Common environment variables and mounts.
 ENV GEN=ninja
@@ -37,7 +38,12 @@ RUN set -eux; \
     ./"cmake-${CMAKE_VERSION}-linux-aarch64.sh" --skip-license --prefix=/usr/local; \
     cmake --version; \
     rm -rf /tmp/cmake; \
+    git clone "https://github.com/microsoft/vcpkg.git" /vcpkg; \
+    git -C /vcpkg checkout --force "${VCPKG_COMMIT}"; \
+    VCPKG_FORCE_SYSTEM_BINARIES=1 /vcpkg/bootstrap-vcpkg.sh; \
     dnf clean all; \
     rm -rf /var/cache/dnf
 ENV PATH="/opt/rh/gcc-toolset-14/root/usr/bin:${PATH}"
 ENV LD_LIBRARY_PATH="/opt/rh/gcc-toolset-14/root/usr/lib64:${LD_LIBRARY_PATH}"
+ENV VCPKG_ROOT=/vcpkg
+ENV VCPKG_TOOLCHAIN_PATH=/vcpkg/scripts/buildsystems/vcpkg.cmake
