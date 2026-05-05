@@ -23,7 +23,7 @@ fi
 BASE_IMAGE="alpine_3_22"
 REPO_PREFIX="${REPO_PREFIX:-duckdb-ci}"
 IMAGE_SUFFIX="${IMAGE_SUFFIX:-}"
-TOOLCHAINS_INPUT="${TOOLCHAINS:-cpp rust}"
+TOOLCHAINS_INPUT="${TOOLCHAINS:-cpp main rust}"
 read -r -a TOOLCHAINS <<< "${TOOLCHAINS_INPUT}"
 
 build_image() {
@@ -53,6 +53,13 @@ build_toolchain() {
 			build_image \
 				"${repo}" \
 				"${root}/rust/Dockerfile" \
+				"." \
+				--build-arg "CPP_IMAGE=${cpp_repo}:${IMAGE_VERSION}"
+			;;
+		main)
+			build_image \
+				"${repo}" \
+				"${root}/main/Dockerfile" \
 				"." \
 				--build-arg "CPP_IMAGE=${cpp_repo}:${IMAGE_VERSION}"
 			;;

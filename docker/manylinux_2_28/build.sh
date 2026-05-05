@@ -24,7 +24,7 @@ CUDA_VERSION="13"
 BASE_IMAGE="manylinux_2_28"
 REPO_PREFIX="${REPO_PREFIX:-duckdb-ci}"
 IMAGE_SUFFIX="${IMAGE_SUFFIX:-}"
-TOOLCHAINS_INPUT="${TOOLCHAINS:-cpp rust cuda}"
+TOOLCHAINS_INPUT="${TOOLCHAINS:-cpp main rust cuda}"
 read -r -a TOOLCHAINS <<< "${TOOLCHAINS_INPUT}"
 
 build_image() {
@@ -54,6 +54,13 @@ build_toolchain() {
 			build_image \
 				"${repo}" \
 				"${root}/rust/Dockerfile" \
+				"." \
+				--build-arg "CPP_IMAGE=${cpp_repo}:${IMAGE_VERSION}"
+			;;
+		main)
+			build_image \
+				"${repo}" \
+				"${root}/main/Dockerfile" \
 				"." \
 				--build-arg "CPP_IMAGE=${cpp_repo}:${IMAGE_VERSION}"
 			;;

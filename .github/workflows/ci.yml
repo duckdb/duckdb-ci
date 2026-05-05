@@ -61,19 +61,19 @@ jobs:
           - distro: manylinux_2_28
             arch: amd64
             runs_on: namespace-profile-linux-x64
-            toolchains: cpp rust cuda
+            toolchains: cpp main rust cuda
           - distro: manylinux_2_28
             arch: aarch64
             runs_on: namespace-profile-linux-arm64
-            toolchains: cpp rust cuda
+            toolchains: cpp main rust cuda
           - distro: alpine_3_22
             arch: amd64
             runs_on: namespace-profile-linux-x64
-            toolchains: cpp rust
+            toolchains: cpp main rust
           - distro: alpine_3_22
             arch: aarch64
             runs_on: namespace-profile-linux-arm64
-            toolchains: cpp rust
+            toolchains: cpp main rust
 
     steps:
       - name: Checkout repository
