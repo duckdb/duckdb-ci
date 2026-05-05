@@ -66,7 +66,9 @@ runs:
       with:
         vcpkgGitCommitId: ${{ inputs.vcpkg-commit }}
         # Cache vcpkg binary to reduce impact of building from source on ARM.
-        doNotCache: ${{ (runner.arch == 'ARM' || runner.arch == 'ARM64') && 'false' || '' }}
+        # TODO: caching logic is broken in run-vcpkg.
+        # See: https://github.com/lukka/run-vcpkg/issues/243
+        # doNotCache: ${{ (runner.arch == 'ARM' || runner.arch == 'ARM64') && 'false' || '' }}
 
     - name: Reset env
       if: ${{ inputs.vcpkg-commit != '' }}

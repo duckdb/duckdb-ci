@@ -37,6 +37,7 @@ RUN set -eux; \
     chmod +x "cmake-${CMAKE_VERSION}-linux-x86_64.sh"; \
     ./"cmake-${CMAKE_VERSION}-linux-x86_64.sh" --skip-license --prefix=/usr/local; \
     cmake --version; \
+    cd /; \
     rm -rf /tmp/cmake; \
     git clone "https://github.com/microsoft/vcpkg.git" /vcpkg; \
     git -C /vcpkg checkout --force "${VCPKG_COMMIT}"; \
