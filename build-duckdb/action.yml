@@ -41,12 +41,16 @@ runs:
   steps:
     - name: Configure
       if: ${{ inputs.vcpkg-commit != '' }}
+      id: configure
       shell: bash
       run: |
         cache_path="${GITHUB_WORKSPACE}/vcpkg-cache"
         mkdir -p "${cache_path}"
         echo "VCPKG_DEFAULT_BINARY_CACHE=${cache_path}" >> "$GITHUB_ENV"
         echo "VCPKG_BINARY_SOURCES=clear;files,${cache_path},readwrite" >> "$GITHUB_ENV"
+        resolved_vcpkg_root="${VCPKG_ROOT:-${GITHUB_WORKSPACE}/vcpkg}"
+        echo "vcpkg_root=${resolved_vcpkg_root}" >> "$GITHUB_OUTPUT"
+
 
     - name: Restore vcpkg cache
       if: ${{ inputs.vcpkg-commit != '' && inputs.cache == 'true' }}
@@ -64,7 +68,7 @@ runs:
       env:
         FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
       with:
-        vcpkgDirectory: /vcpkg
+        vcpkgDirectory: ${{ steps.configure.outputs.vcpkg_root }}
         vcpkgGitCommitId: ${{ inputs.vcpkg-commit }}
         # Cache vcpkg binary to reduce impact of building from source on ARM.
         # TODO: caching logic is broken in run-vcpkg.
@@ -81,7 +85,7 @@ runs:
         echo "::endgroup::"
 
         {
-          echo VCPKG_TOOLCHAIN_PATH="${{ env.VCPKG_ROOT }}/scripts/buildsystems/vcpkg.cmake";
+          echo "VCPKG_TOOLCHAIN_PATH=${{ steps.configure.outputs.vcpkg_root }}/scripts/buildsystems/vcpkg.cmake";
           echo VCPKG_DEFAULT_BINARY_CACHE="${{ github.workspace }}/vcpkg-cache";
           echo VCPKG_BINARY_SOURCES="clear;files,${{ github.workspace }}/vcpkg-cache,readwrite";
           echo USE_MERGED_VCPKG_MANIFEST=1;
