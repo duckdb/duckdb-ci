@@ -22,5 +22,4 @@ RUN set -eux; \
       build-base \
       ccache \
       cmake; \
-    git config --global --add safe.directory "*"; \
     ccache --version

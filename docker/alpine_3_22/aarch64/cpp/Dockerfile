@@ -49,5 +49,4 @@ RUN set -eux; \
       libstdc++ \
     ; \
     sed -i "s:ID=alpine:ID=NotpineForGHA:" /etc/os-release; \
-    git config --global --add safe.directory "*"; \
     ccache --version

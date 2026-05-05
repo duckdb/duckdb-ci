@@ -8,7 +8,6 @@ ARG CCACHE_VERSION=4.13.5
 ENV GEN=ninja
 VOLUME /build
 WORKDIR /build
-RUN git config --global --add safe.directory "*"
 
 VOLUME /ccache
 ENV CCACHE_DIR=/ccache
