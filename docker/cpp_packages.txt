@@ -5,7 +5,7 @@ git
 jq
 libtool
 mold
-python3
+python3 >= 3.12
 ninja # alpine
 ninja-build # manylinux
 py3-requests # alpine

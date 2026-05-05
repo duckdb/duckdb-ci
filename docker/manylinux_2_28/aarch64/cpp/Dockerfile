@@ -1,6 +1,6 @@
 FROM quay.io/pypa/manylinux_2_28_aarch64
 COPY docker/cpp_packages.txt /tmp/cpp_packages.txt
-COPY docker/filter_packages.sh /usr/local/bin/filter-packages
+COPY docker/packages.py /usr/local/bin/packages.py
 
 ARG CMAKE_VERSION=4.3.2
 ARG CCACHE_VERSION=4.13.5
@@ -15,11 +15,13 @@ ENV CCACHE_DIR=/ccache
 
 # Minimal C/C++ build dependencies.
 RUN set -eux; \
-    chmod +x /usr/local/bin/filter-packages; \
-    common_packages="$(filter-packages manylinux /tmp/cpp_packages.txt)"; \
+    common_packages="$(python3 /usr/local/bin/packages.py list --distro manylinux --packages-file /tmp/cpp_packages.txt)"; \
     dnf groupinstall -y "Development Tools"; \
     dnf install -y \
       ${common_packages}; \
+    alternatives --install /usr/bin/python3 python3 /usr/local/bin/python3.14 314; \
+    alternatives --set python3 /usr/local/bin/python3.14; \
+    python3 /usr/local/bin/packages.py check --distro manylinux --packages-file /tmp/cpp_packages.txt; \
     mkdir -p /tmp/ccache && cd /tmp/ccache; \
     wget -nv "https://github.com/ccache/ccache/releases/download/v${CCACHE_VERSION}/ccache-${CCACHE_VERSION}-linux-aarch64-musl-static.tar.xz"; \
     tar -xf "ccache-${CCACHE_VERSION}-linux-aarch64-musl-static.tar.xz"; \

@@ -65,6 +65,8 @@ runs:
         FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
       with:
         vcpkgGitCommitId: ${{ inputs.vcpkg-commit }}
+        # Cache vcpkg binary to reduce impact of building from source on ARM.
+        doNotCache: ${{ (runner.arch == 'ARM' || runner.arch == 'ARM64') && 'false' || '' }}
 
     - name: Reset env
       if: ${{ inputs.vcpkg-commit != '' }}
