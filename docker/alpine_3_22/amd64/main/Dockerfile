@@ -4,6 +4,7 @@ FROM ${CPP_IMAGE}
 COPY docker/main_packages.txt /tmp/main_packages.txt
 
 RUN set -eux; \
-    main_packages="$(filter-packages alpine /tmp/main_packages.txt)"; \
+    main_packages="$(python3 /usr/local/bin/packages.py list --distro alpine --packages-file /tmp/main_packages.txt)"; \
     apk add --no-cache \
-      ${main_packages}
+      ${main_packages}; \
+    python3 /usr/local/bin/packages.py check --distro alpine --packages-file /tmp/main_packages.txt

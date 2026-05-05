@@ -32,12 +32,11 @@ VOLUME /ccache
 ENV CCACHE_DIR=/ccache
 
 COPY docker/cpp_packages.txt /tmp/cpp_packages.txt
-COPY docker/filter_packages.sh /usr/local/bin/filter-packages
+COPY docker/packages.py /usr/local/bin/packages.py
 
 # Minimal C/C++ build dependencies.
 RUN set -eux; \
-    chmod +x /usr/local/bin/filter-packages; \
-    common_packages="$(filter-packages alpine /tmp/cpp_packages.txt)"; \
+    common_packages="$(python3 /usr/local/bin/packages.py list --distro alpine --packages-file /tmp/cpp_packages.txt)"; \
     apk add --no-cache \
       ${common_packages} \
       bash \
@@ -46,5 +45,6 @@ RUN set -eux; \
       cmake \
       libstdc++ \
     ; \
+    python3 /usr/local/bin/packages.py check --distro alpine --packages-file /tmp/cpp_packages.txt; \
     sed -i "s:ID=alpine:ID=NotpineForGHA:" /etc/os-release; \
     ccache --version
