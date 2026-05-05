@@ -1,0 +1,6 @@
+# Packages shared by all main images
+linux-headers # alpine
+kernel-headers # manylinux
+perl
+perl-utils # alpine
+perl-IPC-Cmd # manylinux
