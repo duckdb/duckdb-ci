@@ -51,21 +51,6 @@ runs:
         resolved_vcpkg_root="${VCPKG_ROOT:-${GITHUB_WORKSPACE}/vcpkg}"
         echo "vcpkg_root=${resolved_vcpkg_root}" >> "$GITHUB_OUTPUT"
 
-    - name: Setup ccache
-      if: ${{ inputs.cache == 'true' }}
-      uses: hendrikmuhs/ccache-action@v1.2.23
-      with:
-        key: ccache-${{ inputs.build-type }}-${{ inputs.cache-suffix }}
-        cache: ${{ inputs.save-cache }}
-        # Dump verbose ccache statistics report at end of CI job.
-        verbose: 1
-        # Increase per-directory limit: 5*1024 MB / 16 = 320 MB.
-        # Note: `layout=subdirs` computes the size limit divided by 16 dirs.
-        # See also: https://ccache.dev/manual/4.9.html#_cache_size_management
-        max-size: 5GB
-        # Evicts all cache files that were not touched during the job run.
-        # Removing cache files from previous runs avoids creating huge caches.
-        evict-old-files: 'job'
 
     - name: Restore vcpkg cache
       if: ${{ inputs.vcpkg-commit != '' && inputs.cache == 'true' }}
