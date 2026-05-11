@@ -4,10 +4,11 @@ description: "Checkout extension directories"
 inputs:
   duckdb-ref:
     description: "Ref to fetch for duckdb"
-    required: true
+    default: "main"
   duckdb-sha:
     description: "Exact commit SHA to checkout for duckdb"
-    required: true
+  duckdb-repository:
+    description: "Optional custom DuckDB repository to clone"
   ci-tools-ref:
     description: "Ref/branch to checkout for extension-ci-tools"
     default: "main"
@@ -29,13 +30,24 @@ runs:
         fetch-depth: 0
         submodules: recursive
 
+    - name: Checkout custom DuckDB
+      if: ${{ inputs.duckdb-repository != '' }}
+      uses: actions/checkout@v6
+      with:
+        path: duckdb
+        repository: ${{ inputs.duckdb-repository }}
+        ref: ${{ inputs.duckdb-ref }}
+        fetch-depth: 0
+
     - name: Set git ref
       shell: bash
       run: |
         set -eux -o pipefail
         git -C duckdb fetch --prune --tags origin "${{ inputs.duckdb-ref }}"
         git -C extension-ci-tools fetch --prune --tags origin
-        git -C duckdb checkout "${{ inputs.duckdb-sha }}"
+        if [[ "${{ inputs.duckdb-sha }}" != '' ]]; then
+          git -C duckdb checkout "${{ inputs.duckdb-sha }}"
+        fi
         git -C extension-ci-tools checkout "${{ inputs.ci-tools-ref }}"
 
         git config --global --add safe.directory "$PWD"
