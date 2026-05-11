@@ -1,0 +1,43 @@
+name: "Prepare extension"
+description: "Checkout extension directories"
+
+inputs:
+  duckdb-ref:
+    description: "Ref to fetch for duckdb"
+    required: true
+  duckdb-sha:
+    description: "Exact commit SHA to checkout for duckdb"
+    required: true
+  ci-tools-ref:
+    description: "Ref/branch to checkout for extension-ci-tools"
+    default: "main"
+  extension-ref:
+    description: "Ref/branch to checkout for extension"
+    required: true
+  extension-repository:
+    description: "Extension repository to clone"
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    - name: Checkout
+      uses: actions/checkout@v6
+      with:
+        repository: ${{ inputs.extension-repository }}
+        ref: ${{ inputs.extension-ref }}
+        fetch-depth: 0
+        submodules: recursive
+
+    - name: Set git ref
+      shell: bash
+      run: |
+        set -eux -o pipefail
+        git -C duckdb fetch --prune --tags origin "${{ inputs.duckdb-ref }}"
+        git -C extension-ci-tools fetch --prune --tags origin
+        git -C duckdb checkout "${{ inputs.duckdb-sha }}"
+        git -C extension-ci-tools checkout "${{ inputs.ci-tools-ref }}"
+
+        git config --global --add safe.directory "$PWD"
+        git config --global --add safe.directory "$PWD/duckdb"
+        git config --global --add safe.directory "$PWD/extension-ci-tools"
