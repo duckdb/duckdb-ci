@@ -359,6 +359,9 @@ jobs:
           test -f duckdb/build/release/src/libduckdb.so
           test -f duckdb/build/release/src/libduckdb_static.a
 
+          mkdir -p build/release/test
+          ln -s ../../../duckdb/build/release/test/unittest build/release/test/unittest
+
           {
             echo DUCKDB_PREBUILT_LIBRARY="$PWD/duckdb/build/release/src/libduckdb_static.a"
             echo BUILD_EXTENSIONS_ONLY=1
