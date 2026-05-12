@@ -313,6 +313,46 @@ jobs:
         working-directory: duckdb
         run: ${{ matrix.verify }}
 
+  test-extension-template:
+    name: Test extension-template
+    runs-on: namespace-profile-linux-x64
+    needs:
+      - prepare
+      - lint
+      - test-build-duckdb
+    steps:
+      - name: Checkout duckdb-ci
+        uses: actions/checkout@v6
+        with:
+          path: duckdb-ci
+
+      - name: Prepare extension repository
+        uses: ./duckdb-ci/prepare-extension
+        with:
+          extension-ref: main
+          extension-repository: duckdb/extension-template
+
+      # Previous prepare action clears the duckdb-ci/ path
+      - name: Checkout duckdb-ci
+        uses: actions/checkout@v6
+        with:
+          path: duckdb-ci
+
+      - name: Setup ccache
+        uses: hendrikmuhs/ccache-action@v1.2.23
+        with:
+          max-size: 5GB
+          evict-old-files: 'job'
+
+      - name: Build extension
+        uses: ./duckdb-ci/build-duckdb
+        with:
+          cache: false
+          build: make release
+          test: make test_release
+        env:
+          GEN: ninja
+
   test-bot:
     name: Test Bot
     runs-on: ubuntu-latest
@@ -399,6 +439,7 @@ jobs:
       - lint
       - test-checkout
       - test-build-duckdb
+      - test-extension-template
       - test-bot
       - build-images
       - test-image-cpp
