@@ -365,6 +365,13 @@ jobs:
             echo BUILD_EXTENSION_TEST_DEPS=none
           } >> "$GITHUB_ENV"
 
+      - name: Patch extension_build_tools.cmake
+        shell: bash
+        working-directory: duckdb
+        run: |
+          set -eux -o pipefail
+          patch --forward --strip=1 --input ../duckdb-ci/patches/skip-base-extension-config.patch
+
       - name: Build extension
         uses: ./duckdb-ci/build-duckdb
         with:
