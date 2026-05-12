@@ -344,21 +344,6 @@ jobs:
           max-size: 5GB
           evict-old-files: 'job'
 
-      - name: Download linux release artifact
-        uses: actions/download-artifact@v8
-        with:
-          name: linux-release
-          path: linux-release
-
-      - name: Extract linux release artifact
-        shell: bash
-        run: |
-          set -eux -o pipefail
-          mkdir -p duckdb/build
-          tar -xvzf linux-release/release-artifact.tar.gz -C duckdb/build
-          test -f duckdb/build/release/src/libduckdb.so
-          test -f duckdb/build/release/src/libduckdb_static.a
-
       - name: Build extension
         uses: ./duckdb-ci/build-duckdb
         with:
@@ -366,7 +351,7 @@ jobs:
           build: make release
           test: make test_release
         env:
-          DUCKDB_PREBUILT_LIBRARY: duckdb/build/release/src/libduckdb_static.a
+          GEN: ninja
 
   test-bot:
     name: Test Bot
