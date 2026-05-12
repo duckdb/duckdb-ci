@@ -371,6 +371,7 @@ jobs:
         run: |
           set -eux -o pipefail
           patch --forward --strip=1 --input ../duckdb-ci/patches/skip-base-extension-config.patch
+          patch --forward --strip=1 --input ../duckdb-ci/patches/skip-third-party.patch
 
       - name: Build extension
         uses: ./duckdb-ci/build-duckdb
