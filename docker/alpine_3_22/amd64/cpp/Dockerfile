@@ -12,6 +12,7 @@ WORKDIR /build
 
 VOLUME /ccache
 ENV CCACHE_DIR=/ccache
+ENV VCPKG_FORCE_SYSTEM_BINARIES=1
 
 # Minimal C/C++ build dependencies.
 RUN set -eux; \
@@ -26,7 +27,8 @@ RUN set -eux; \
     python3 /usr/local/bin/packages.py check --distro alpine --packages-file /tmp/cpp_packages.txt; \
     git clone "https://github.com/microsoft/vcpkg.git" /vcpkg; \
     git -C /vcpkg checkout --force "${VCPKG_COMMIT}"; \
-    VCPKG_FORCE_SYSTEM_BINARIES=1 /vcpkg/bootstrap-vcpkg.sh; \
+    /vcpkg/bootstrap-vcpkg.sh; \
+    printf %s "${VCPKG_COMMIT}" > /vcpkg/vcpkgLastBuiltCommitId; \
     ccache --version
 ENV VCPKG_ROOT=/vcpkg
 ENV VCPKG_TOOLCHAIN_PATH=/vcpkg/scripts/buildsystems/vcpkg.cmake

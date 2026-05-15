@@ -61,19 +61,19 @@ jobs:
           - distro: manylinux_2_28
             arch: amd64
             runs_on: namespace-profile-linux-x64
-            toolchains: cpp main rust cuda
+            dependent_toolchains: rust cuda
           - distro: manylinux_2_28
             arch: aarch64
             runs_on: namespace-profile-linux-arm64
-            toolchains: cpp main rust cuda
+            dependent_toolchains: rust cuda
           - distro: alpine_3_22
             arch: amd64
             runs_on: namespace-profile-linux-x64
-            toolchains: cpp main rust
+            dependent_toolchains: rust
           - distro: alpine_3_22
             arch: aarch64
             runs_on: namespace-profile-linux-arm64
-            toolchains: cpp main rust
+            dependent_toolchains: rust
 
     steps:
       - name: Checkout repository
@@ -96,17 +96,21 @@ jobs:
           pushed_images_file="${RUNNER_TEMP}/pushed-images-${{ matrix.distro }}-${{ matrix.arch }}.txt"
           : > "${pushed_images_file}"
 
-          # Push cpp first so remote builders can pull it as the base image for dependent toolchains.
+          # Push cpp first so remote builders can pull it as the base image for main.
           IMAGE_SUFFIX="${IMAGE_SUFFIX}" TOOLCHAINS="cpp" "./docker/${{ matrix.distro }}/build.sh" "${{ matrix.arch }}"
           cpp_image="${REPO_PREFIX}/${{ matrix.distro }}_${{ matrix.arch }}_cpp${IMAGE_SUFFIX}:${IMAGE_VERSION}"
           docker push "${cpp_image}"
           echo "${cpp_image}" >> "${pushed_images_file}"
 
-          IMAGE_SUFFIX="${IMAGE_SUFFIX}" TOOLCHAINS="${{ matrix.toolchains }}" "./docker/${{ matrix.distro }}/build.sh" "${{ matrix.arch }}"
-          for toolchain in ${{ matrix.toolchains }}; do
-            if [[ "${toolchain}" == "cpp" ]]; then
-              continue
-            fi
+          # Push main before building rust so remote builders can pull main as the rust base image.
+          IMAGE_SUFFIX="${IMAGE_SUFFIX}" TOOLCHAINS="main" "./docker/${{ matrix.distro }}/build.sh" "${{ matrix.arch }}"
+          main_image="${REPO_PREFIX}/${{ matrix.distro }}_${{ matrix.arch }}_main${IMAGE_SUFFIX}:${IMAGE_VERSION}"
+          docker push "${main_image}"
+          echo "${main_image}" >> "${pushed_images_file}"
+
+          # Build and push remaining variants that depend on already-published base images.
+          IMAGE_SUFFIX="${IMAGE_SUFFIX}" TOOLCHAINS="${{ matrix.dependent_toolchains }}" "./docker/${{ matrix.distro }}/build.sh" "${{ matrix.arch }}"
+          for toolchain in ${{ matrix.dependent_toolchains }}; do
             image="${REPO_PREFIX}/${{ matrix.distro }}_${{ matrix.arch }}_${toolchain}${IMAGE_SUFFIX}:${IMAGE_VERSION}"
             docker push "${image}"
             echo "${image}" >> "${pushed_images_file}"
@@ -171,6 +175,15 @@ jobs:
           evict-old-files: 'job'
           key: ccache-${{ matrix.distro }}_${{ matrix.arch }}
 
+      - name: Before build
+        id: pre_build
+        shell: bash
+        run: |
+          set -eux -o pipefail
+          test -x /vcpkg/vcpkg
+          test -f /vcpkg/vcpkgLastBuiltCommitId
+          echo "marker_mtime=$(stat -c %Y /vcpkg/vcpkgLastBuiltCommitId)" >> "$GITHUB_OUTPUT"
+
       - name: Build DuckDB
         uses: ./duckdb-ci/build-duckdb
         with:
@@ -178,6 +191,13 @@ jobs:
           build: make release
           vcpkg-commit: ${{ needs.prepare.outputs.vcpkg_commit }}
           cache-suffix: ${{ matrix.distro }}_${{ matrix.arch }}${{ needs.prepare.outputs.image_suffix }}
+
+      - name: After build
+        id: post_build
+        shell: bash
+        run: |
+          set -eux -o pipefail
+          test "$(stat -c %Y /vcpkg/vcpkgLastBuiltCommitId)" = "${{ steps.pre_build.outputs.marker_mtime }}"
 
       - name: Test DuckDB
         working-directory: duckdb

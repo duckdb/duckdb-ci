@@ -33,6 +33,7 @@ WORKDIR /build
 
 VOLUME /ccache
 ENV CCACHE_DIR=/ccache
+ENV VCPKG_FORCE_SYSTEM_BINARIES=1
 
 COPY docker/cpp_packages.txt /tmp/cpp_packages.txt
 COPY docker/packages.py /usr/local/bin/packages.py
@@ -52,7 +53,8 @@ RUN set -eux; \
     python3 /usr/local/bin/packages.py check --distro alpine --packages-file /tmp/cpp_packages.txt; \
     git clone "https://github.com/microsoft/vcpkg.git" /vcpkg; \
     git -C /vcpkg checkout --force "${VCPKG_COMMIT}"; \
-    VCPKG_FORCE_SYSTEM_BINARIES=1 /vcpkg/bootstrap-vcpkg.sh; \
+    /vcpkg/bootstrap-vcpkg.sh; \
+    printf %s "${VCPKG_COMMIT}" > /vcpkg/vcpkgLastBuiltCommitId; \
     sed -i "s:ID=alpine:ID=NotpineForGHA:" /etc/os-release; \
     ccache --version
 ENV VCPKG_ROOT=/vcpkg

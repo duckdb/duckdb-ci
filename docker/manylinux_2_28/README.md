@@ -11,7 +11,7 @@ This directory defines split DuckDB build images for two architectures:
 - `duckdb-ci/manylinux_2_28_amd64_rust`
 - `duckdb-ci/manylinux_2_28_amd64_cuda`
 
-For each architecture, `main`, `rust`, and `cuda` inherit from `cpp`.
+For each architecture, `main` and `cuda` inherit from `cpp`, and `rust` inherits from `main`.
 
 ## Build locally
 

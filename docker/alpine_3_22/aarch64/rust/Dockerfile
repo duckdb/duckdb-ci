@@ -1,5 +1,5 @@
-ARG CPP_IMAGE=duckdb-ci/alpine_3_22_aarch64_cpp:v1
-FROM ${CPP_IMAGE}
+ARG MAIN_IMAGE=duckdb-ci/alpine_3_22_aarch64_main:v1
+FROM ${MAIN_IMAGE}
 
 # Configure Rust.
 ENV PATH="/root/.cargo/bin:${PATH}"

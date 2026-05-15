@@ -47,6 +47,7 @@ build_toolchain() {
 	local root="docker/${BASE_IMAGE}/${ARCH}"
 	local repo="${REPO_PREFIX}/${BASE_IMAGE}_${ARCH}_${toolchain}${IMAGE_SUFFIX}"
 	local cpp_repo="${REPO_PREFIX}/${BASE_IMAGE}_${ARCH}_cpp${IMAGE_SUFFIX}"
+	local main_repo="${REPO_PREFIX}/${BASE_IMAGE}_${ARCH}_main${IMAGE_SUFFIX}"
 
 	case "${toolchain}" in
 		cpp)
@@ -60,7 +61,7 @@ build_toolchain() {
 				"${repo}" \
 				"${root}/rust/Dockerfile" \
 				"." \
-				--build-arg "CPP_IMAGE=${cpp_repo}:${IMAGE_VERSION}"
+				--build-arg "MAIN_IMAGE=${main_repo}:${IMAGE_VERSION}"
 			;;
 		main)
 			build_image \

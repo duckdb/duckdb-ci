@@ -9,7 +9,7 @@ This directory defines split DuckDB build images for two architectures:
 - `duckdb-ci/alpine_3_22_amd64_main`
 - `duckdb-ci/alpine_3_22_amd64_rust`
 
-For each architecture, `main` and `rust` inherit from `cpp`.
+For each architecture, `main` inherits from `cpp`, and `rust` inherits from `main`.
 
 ## Build locally
 
