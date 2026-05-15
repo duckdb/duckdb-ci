@@ -43,6 +43,7 @@ RUN set -eux; \
     git clone "https://github.com/microsoft/vcpkg.git" /vcpkg; \
     git -C /vcpkg checkout --force "${VCPKG_COMMIT}"; \
     /vcpkg/bootstrap-vcpkg.sh; \
+    printf %s "${VCPKG_COMMIT}" > /vcpkg/vcpkgLastBuiltCommitId; \
     dnf clean all; \
     rm -rf /var/cache/dnf
 ENV PATH="/opt/rh/gcc-toolset-14/root/usr/bin:${PATH}"

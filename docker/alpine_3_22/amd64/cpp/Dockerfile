@@ -28,6 +28,7 @@ RUN set -eux; \
     git clone "https://github.com/microsoft/vcpkg.git" /vcpkg; \
     git -C /vcpkg checkout --force "${VCPKG_COMMIT}"; \
     /vcpkg/bootstrap-vcpkg.sh; \
+    printf %s "${VCPKG_COMMIT}" > /vcpkg/vcpkgLastBuiltCommitId; \
     ccache --version
 ENV VCPKG_ROOT=/vcpkg
 ENV VCPKG_TOOLCHAIN_PATH=/vcpkg/scripts/buildsystems/vcpkg.cmake

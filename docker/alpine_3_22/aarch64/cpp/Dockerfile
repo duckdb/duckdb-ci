@@ -54,6 +54,7 @@ RUN set -eux; \
     git clone "https://github.com/microsoft/vcpkg.git" /vcpkg; \
     git -C /vcpkg checkout --force "${VCPKG_COMMIT}"; \
     /vcpkg/bootstrap-vcpkg.sh; \
+    printf %s "${VCPKG_COMMIT}" > /vcpkg/vcpkgLastBuiltCommitId; \
     sed -i "s:ID=alpine:ID=NotpineForGHA:" /etc/os-release; \
     ccache --version
 ENV VCPKG_ROOT=/vcpkg

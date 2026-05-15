@@ -175,6 +175,15 @@ jobs:
           evict-old-files: 'job'
           key: ccache-${{ matrix.distro }}_${{ matrix.arch }}
 
+      - name: Before build
+        id: pre_build
+        shell: bash
+        run: |
+          set -eux -o pipefail
+          test -x /vcpkg/vcpkg
+          test -f /vcpkg/vcpkgLastBuiltCommitId
+          echo "marker_mtime=$(stat -c %Y /vcpkg/vcpkgLastBuiltCommitId)" >> "$GITHUB_OUTPUT"
+
       - name: Build DuckDB
         uses: ./duckdb-ci/build-duckdb
         with:
@@ -182,6 +191,13 @@ jobs:
           build: make release
           vcpkg-commit: ${{ needs.prepare.outputs.vcpkg_commit }}
           cache-suffix: ${{ matrix.distro }}_${{ matrix.arch }}${{ needs.prepare.outputs.image_suffix }}
+
+      - name: After build
+        id: post_build
+        shell: bash
+        run: |
+          set -eux -o pipefail
+          test "$(stat -c %Y /vcpkg/vcpkgLastBuiltCommitId)" = "${{ steps.pre_build.outputs.marker_mtime }}"
 
       - name: Test DuckDB
         working-directory: duckdb

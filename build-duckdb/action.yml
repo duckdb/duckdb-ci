@@ -44,12 +44,25 @@ runs:
       id: configure
       shell: bash
       run: |
+        set -eux -o pipefail
         cache_path="${GITHUB_WORKSPACE}/vcpkg-cache"
         mkdir -p "${cache_path}"
         echo "VCPKG_DEFAULT_BINARY_CACHE=${cache_path}" >> "$GITHUB_ENV"
         echo "VCPKG_BINARY_SOURCES=clear;files,${cache_path},readwrite" >> "$GITHUB_ENV"
         resolved_vcpkg_root="${VCPKG_ROOT:-${GITHUB_WORKSPACE}/vcpkg}"
-        echo "vcpkg_root=${resolved_vcpkg_root}" >> "$GITHUB_OUTPUT"
+        vcpkg_last_commit_path="${resolved_vcpkg_root}/vcpkgLastBuiltCommitId"
+        do_not_update="false"
+        if [[ -f "${vcpkg_last_commit_path}" ]] && [[ "$(cat "${vcpkg_last_commit_path}")" == "${{ inputs.vcpkg-commit }}" ]]; then
+          do_not_update="true"
+          echo "vcpkg marker matches requested commit; enabling doNotUpdateVcpkg"
+        else
+          echo "vcpkg marker missing/mismatched; allowing run-vcpkg update/bootstrap path"
+        fi
+
+        {
+          echo "vcpkg_root=${resolved_vcpkg_root}"
+          echo "do_not_update_vcpkg=${do_not_update}"
+        } >> "$GITHUB_OUTPUT"
 
 
     - name: Restore vcpkg cache
@@ -70,6 +83,7 @@ runs:
       with:
         vcpkgDirectory: ${{ steps.configure.outputs.vcpkg_root }}
         vcpkgGitCommitId: ${{ inputs.vcpkg-commit }}
+        doNotUpdateVcpkg: ${{ steps.configure.outputs.do_not_update_vcpkg }}
         # Cache vcpkg binary to reduce impact of building from source on ARM.
         # TODO: caching logic is broken in run-vcpkg.
         # See: https://github.com/lukka/run-vcpkg/issues/243
