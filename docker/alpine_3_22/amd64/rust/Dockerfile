@@ -1,9 +1,14 @@
 ARG MAIN_IMAGE=duckdb-ci/alpine_3_22_amd64_main:v1
 FROM ${MAIN_IMAGE}
 
-# Configure Rust.
-ENV PATH="/root/.cargo/bin:${PATH}"
+# Configure Rust in shared system paths so non-root users can use the toolchain.
+ENV RUSTUP_HOME="/usr/local/rustup"
+ENV CARGO_HOME="/usr/local/cargo"
+ENV PATH="${CARGO_HOME}/bin:${PATH}"
 RUN set -eux; \
-    curl --silent --show-error --fail --location https://sh.rustup.rs | sh -s -- -y; \
+    mkdir -p "${RUSTUP_HOME}" "${CARGO_HOME}"; \
+    chmod -R a+rX "${RUSTUP_HOME}" "${CARGO_HOME}"; \
+    curl --silent --show-error --fail --location https://sh.rustup.rs | sh -s -- -y --default-toolchain stable; \
+    rustup default stable; \
     rustc --version; \
     cargo --version
