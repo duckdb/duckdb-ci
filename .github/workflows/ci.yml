@@ -222,6 +222,52 @@ jobs:
           echo "::endgroup::"
           ./actionlint -color
 
+  test-detect-runners:
+    name: Test detect-runners
+    runs-on: namespace-profile-linux-small
+    needs:
+      - lint
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Detect runners
+        id: detect
+        uses: ./detect-runners
+
+      - name: Validate outputs
+        shell: bash
+        env:
+          RUNNER_PROVIDER: ${{ steps.detect.outputs.runner_provider }}
+          RUNNER_LINUX_SMALL: ${{ steps.detect.outputs.runner_linux_small }}
+          RUNNER_LINUX_X64: ${{ steps.detect.outputs.runner_linux_x64 }}
+          RUNNER_LINUX_22_X64: ${{ steps.detect.outputs.runner_linux_22_x64 }}
+          RUNNER_LINUX_ARM64: ${{ steps.detect.outputs.runner_linux_arm64 }}
+          RUNNER_WINDOWS_2022_X64: ${{ steps.detect.outputs.runner_windows_2022_x64 }}
+          RUNNER_MACOS_ARM64: ${{ steps.detect.outputs.runner_macos_arm64 }}
+          RUNNER_MACOS_14_ARM64: ${{ steps.detect.outputs.runner_macos_14_arm64 }}
+          RUNNERS_JSON: ${{ steps.detect.outputs.runners }}
+        run: |
+          set -euo pipefail
+
+          [[ "${RUNNER_PROVIDER}" == "namespace" ]]
+          [[ "${RUNNER_LINUX_SMALL}" == "namespace-profile-linux-small" ]]
+          [[ "${RUNNER_LINUX_X64}" == "namespace-profile-linux-x64" ]]
+          [[ "${RUNNER_LINUX_22_X64}" == "namespace-profile-linux-22-x64" ]]
+          [[ "${RUNNER_LINUX_ARM64}" == "namespace-profile-linux-arm64" ]]
+          [[ "${RUNNER_WINDOWS_2022_X64}" == "namespace-profile-windows-x64" ]]
+          [[ "${RUNNER_MACOS_ARM64}" == "namespace-profile-macos-arm64" ]]
+          [[ "${RUNNER_MACOS_14_ARM64}" == "namespace-profile-macos-14-arm64" ]]
+
+          jq -e . <<<"${RUNNERS_JSON}" >/dev/null
+          [[ "$(jq -r '.linux_x64' <<<"${RUNNERS_JSON}")" == "${RUNNER_LINUX_X64}" ]]
+          [[ "$(jq -r '.linux_22_x64' <<<"${RUNNERS_JSON}")" == "${RUNNER_LINUX_22_X64}" ]]
+          [[ "$(jq -r '.linux_arm64' <<<"${RUNNERS_JSON}")" == "${RUNNER_LINUX_ARM64}" ]]
+          [[ "$(jq -r '.windows_2022_x64' <<<"${RUNNERS_JSON}")" == "${RUNNER_WINDOWS_2022_X64}" ]]
+          [[ "$(jq -r '.windows_x64' <<<"${RUNNERS_JSON}")" == "${RUNNER_WINDOWS_2022_X64}" ]]
+          [[ "$(jq -r '.macos_arm64' <<<"${RUNNERS_JSON}")" == "${RUNNER_MACOS_ARM64}" ]]
+          [[ "$(jq -r '.macos_14_arm64' <<<"${RUNNERS_JSON}")" == "${RUNNER_MACOS_14_ARM64}" ]]
+
   test-checkout:
     name: Test checkout (${{ matrix.runner_provider }}, ${{ matrix.runs_on }})
 
@@ -459,6 +505,7 @@ jobs:
       - lint
       - test-checkout
       - test-build-duckdb
+      - test-detect-runners
       - test-extension-template
       - test-bot
       - build-images
