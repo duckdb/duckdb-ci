@@ -204,6 +204,9 @@ jobs:
         run:
           ./build/release/duckdb -c "PRAGMA platform; PRAGMA version;"
 
+      - name: Test sanitizer toolchain
+        run: make -C duckdb-ci/docker/test/cpp test -j"$(nproc)"
+
   lint:
     name: Lint
     runs-on: namespace-profile-linux-small
