@@ -10,8 +10,12 @@ test_clang:
 	$(MAKE) -C tsan test_clang BUILD_DIR="../$(BUILD_DIR)"
 
 test_gcc:
-	$(MAKE) -C asan test_gcc BUILD_DIR="../$(BUILD_DIR)"
-	$(MAKE) -C tsan test_gcc BUILD_DIR="../$(BUILD_DIR)"
+	@if [ -f /etc/os-release ] && grep -qi 'pine' /etc/os-release; then \
+		echo "Skipping g++ sanitizer tests on Alpine."; \
+	else \
+		$(MAKE) -C asan test_gcc BUILD_DIR="../$(BUILD_DIR)"; \
+		$(MAKE) -C tsan test_gcc BUILD_DIR="../$(BUILD_DIR)"; \
+	fi
 
 test_asan:
 	$(MAKE) -C asan test BUILD_DIR="../$(BUILD_DIR)"

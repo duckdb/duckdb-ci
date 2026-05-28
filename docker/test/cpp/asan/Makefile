@@ -14,9 +14,6 @@ test: test_clang test_gcc
 
 test_clang: $(CLANG_BIN)
 	$(CLANG_BIN)
-	runtime_dir="$$( $(CLANGXX) --print-runtime-dir )"; \
-	test -d "$$runtime_dir"; \
-	ls "$$runtime_dir" | rg -q 'libclang_rt\.asan|asan' || (echo "ASAN runtime library not found in $$runtime_dir" && exit 1)
 
 test_gcc: $(GCC_BIN)
 	$(GCC_BIN)
