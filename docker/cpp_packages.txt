@@ -6,6 +6,10 @@ jq
 libtool
 mold
 python3 >= 3.12
+clang20 >= 20 # alpine
+compiler-rt >= 20 # alpine
+clang >= 20 # manylinux
+compiler-rt >= 20 # manylinux
 ninja # alpine
 ninja-build # manylinux
 py3-requests # alpine

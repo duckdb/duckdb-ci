@@ -30,6 +30,18 @@ TOOL_CHECKS: dict[str, ToolCheck] = {
         cmd="python3 --version",
         pattern=r"(\d+\.\d+(?:\.\d+)?)",
     ),
+    "clang": ToolCheck(
+        cmd="clang++ --version",
+        pattern=r"clang version (\d+(?:\.\d+)*)",
+    ),
+    "clang20": ToolCheck(
+        cmd="clang++ --version",
+        pattern=r"clang version (\d+(?:\.\d+)*)",
+    ),
+    "compiler-rt": ToolCheck(
+        cmd="clang --print-runtime-dir",
+        pattern=r"/clang/(\d+(?:\.\d+)*)",
+    ),
 }
 
 
