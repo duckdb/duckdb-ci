@@ -1,0 +1,17 @@
+name: lint-ci
+description: Run CI lint checks
+runs:
+  using: composite
+  steps:
+    - name: Check CI
+      run: |
+        echo "::add-matcher::${GITHUB_ACTION_PATH}/actionlint-matcher.json"
+        echo "::group::ShellCheck version"
+        shellcheck --version
+        echo "::endgroup::"
+        echo "::group::Install actionlint"
+        curl --fail --retry 5 --retry-all-errors -o /tmp/download-actionlint.bash https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash
+        bash /tmp/download-actionlint.bash 1.7.12
+        echo "::endgroup::"
+        ./actionlint -color
+      shell: bash
