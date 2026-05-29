@@ -205,7 +205,70 @@ jobs:
           ./build/release/duckdb -c "PRAGMA platform; PRAGMA version;"
 
       - name: Test sanitizer toolchain
-        run: make -C duckdb-ci/docker/test/cpp test -j"$(nproc)"
+        run: make -C duckdb-ci/docker/test test_cpp -j"$(nproc)"
+
+      - name: Package DuckDB static library artifact
+        shell: bash
+        run: |
+          set -eux -o pipefail
+          make -C duckdb-ci/docker/test/compat \
+            package \
+            DUCKDB_DIR="${PWD}/duckdb" \
+            ARTIFACT_DIR="${RUNNER_TEMP}/duckdb-static"
+
+      - name: Upload DuckDB static library artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: duckdb-static-${{ matrix.distro }}-${{ matrix.arch }}
+          path: ${{ runner.temp }}/duckdb-static
+          if-no-files-found: error
+
+  test-compat:
+    name: Verify binary compat (${{ matrix.distro }}, ${{ matrix.arch }})
+    runs-on: ${{ matrix.runs_on }}
+    needs:
+      - prepare
+      - lint
+      - test-image-cpp
+    if: ${{ needs.prepare.outputs.docker_changed == 'true' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - distro: manylinux_2_28
+            arch: amd64
+            runs_on: namespace-profile-linux-x64
+            runtime_image: debian:12
+          - distro: manylinux_2_28
+            arch: aarch64
+            runs_on: namespace-profile-linux-arm64
+            runtime_image: debian:12
+          - distro: alpine_3_22
+            arch: amd64
+            runs_on: namespace-profile-linux-x64
+            runtime_image: alpine:3.22
+          - distro: alpine_3_22
+            arch: aarch64
+            runs_on: namespace-profile-linux-arm64
+            runtime_image: alpine:3.22
+    container:
+      image: ${{ matrix.runtime_image }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Download DuckDB static library artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: duckdb-static-${{ matrix.distro }}-${{ matrix.arch }}
+          path: duckdb-static
+
+      - name: Run compatibility smoke test
+        shell: bash
+        run: |
+          set -eux -o pipefail
+          make -C docker/test test_compat ARTIFACT_DIR="${PWD}/duckdb-static"
 
   lint:
     name: Lint
@@ -505,6 +568,7 @@ jobs:
       - test-bot
       - build-images
       - test-image-cpp
+      - test-compat
     runs-on: ubuntu-slim
     steps:
       - name: Check CI status
