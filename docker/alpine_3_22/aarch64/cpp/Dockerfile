@@ -34,6 +34,7 @@ WORKDIR /build
 VOLUME /ccache
 ENV CCACHE_DIR=/ccache
 ENV VCPKG_FORCE_SYSTEM_BINARIES=1
+ENV ASAN_SYMBOLIZER_PATH=/usr/bin/llvm-symbolizer
 
 COPY docker/cpp_packages.txt /tmp/cpp_packages.txt
 COPY docker/packages.py /usr/local/bin/packages.py

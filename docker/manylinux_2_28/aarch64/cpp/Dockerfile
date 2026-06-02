@@ -14,6 +14,7 @@ WORKDIR /build
 VOLUME /ccache
 ENV CCACHE_DIR=/ccache
 ENV VCPKG_FORCE_SYSTEM_BINARIES=1
+ENV ASAN_SYMBOLIZER_PATH=/usr/bin/llvm-symbolizer
 
 # Minimal C/C++ build dependencies.
 RUN set -eux; \

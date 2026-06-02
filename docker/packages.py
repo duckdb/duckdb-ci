@@ -42,6 +42,14 @@ TOOL_CHECKS: dict[str, ToolCheck] = {
         cmd="clang --print-runtime-dir",
         pattern=r"/clang/(\d+(?:\.\d+)*)",
     ),
+    "llvm": ToolCheck(
+        cmd="llvm-symbolizer --version",
+        pattern=r"LLVM version (\d+(?:\.\d+)*)",
+    ),
+    "llvm20": ToolCheck(
+        cmd="llvm-symbolizer --version",
+        pattern=r"LLVM version (\d+(?:\.\d+)*)",
+    ),
 }
 
 

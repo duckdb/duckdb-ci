@@ -8,8 +8,10 @@ mold
 python3 >= 3.12
 clang20 >= 20 # alpine
 compiler-rt >= 20 # alpine
+llvm20 >= 20 # alpine
 clang >= 20 # manylinux
 compiler-rt >= 20 # manylinux
+llvm >= 20 # manylinux
 gcc-toolset-14-libasan-devel # manylinux
 gcc-toolset-14-libtsan-devel # manylinux
 ninja # alpine
