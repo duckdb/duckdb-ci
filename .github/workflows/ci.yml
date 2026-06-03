@@ -5,6 +5,8 @@ on:
   push:
     branches:
       - main
+  schedule:
+    - cron: '15 5 * * 1-5'
   workflow_dispatch:
 
 permissions:
@@ -17,8 +19,9 @@ jobs:
     runs-on: namespace-profile-linux-small
 
     outputs:
+      build_images: ${{ steps.config.outputs.build_images }}
       vcpkg_commit: ${{ steps.config.outputs.vcpkg_commit }}
-      docker_changed: ${{ steps.changed-files.outputs.any_changed }}
+      docker_changed: ${{ steps.changed-files.outputs.docker_any_changed }}
       image_version: ${{ steps.config.outputs.image_version }}
       image_suffix: ${{ steps.config.outputs.image_suffix }}
 
@@ -30,18 +33,24 @@ jobs:
         id: changed-files
         uses: tj-actions/changed-files@v47
         with:
-          files: |
-            docker/**
+          files_yaml: |
+            docker:
+            - docker/**
 
       - name: Config
         id: config
         run: |
           image_version="$(date -u +%Y%m%d)-${GITHUB_SHA::8}"
           image_suffix=""
+          build_images=false
           if [[ "${{ github.event_name }}" == "pull_request" ]]; then
             image_suffix="_dev"
           fi
+          if [[ "${{ github.event_name }}" != "schedule" && "${{ steps.changed-files.outputs.docker_any_changed }}" == "true" ]]; then
+            build_images=true
+          fi
           {
+            echo build_images="${build_images}"
             echo vcpkg_commit=84bab45d415d22042bd0b9081aea57f362da3f35
             echo image_version="${image_version}"
             echo image_suffix="${image_suffix}"
@@ -53,7 +62,7 @@ jobs:
     needs:
       - prepare
       - lint
-    if: ${{ needs.prepare.outputs.docker_changed == 'true' }}
+    if: ${{ needs.prepare.outputs.build_images == 'true' }}
     strategy:
       fail-fast: false
       matrix:
@@ -117,7 +126,6 @@ jobs:
           done
 
       - name: Upload pushed image list
-        if: ${{ needs.prepare.outputs.docker_changed == 'true' }}
         uses: actions/upload-artifact@v7
         with:
           name: pushed-images-${{ matrix.distro }}-${{ matrix.arch }}
@@ -131,7 +139,7 @@ jobs:
       - prepare
       - lint
       - build-images
-    if: ${{ needs.prepare.outputs.docker_changed == 'true' }}
+    if: ${{ needs.prepare.outputs.build_images == 'true' }}
     strategy:
       fail-fast: false
       matrix:
