@@ -413,6 +413,38 @@ jobs:
           max-size: 5GB
           evict-old-files: 'job'
 
+      - name: Download linux release artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: linux-release
+          path: linux-release
+
+      - name: Extract linux release artifact
+        shell: bash
+        run: |
+          set -eux -o pipefail
+          mkdir -p duckdb/build
+          tar -xvzf linux-release/release-artifact.tar.gz -C duckdb/build
+          test -f duckdb/build/release/src/libduckdb.so
+          test -f duckdb/build/release/src/libduckdb_static.a
+
+          mkdir -p build/release/test
+          ln -s ../../../duckdb/build/release/test/unittest build/release/test/unittest
+
+          {
+            echo DUCKDB_PREBUILT_LIBRARY="$PWD/duckdb/build/release/src/libduckdb_static.a"
+            echo BUILD_EXTENSIONS_ONLY=1
+            echo BUILD_EXTENSION_TEST_DEPS=none
+          } >> "$GITHUB_ENV"
+
+      - name: Patch extension_build_tools.cmake
+        shell: bash
+        working-directory: duckdb
+        run: |
+          set -eux -o pipefail
+          patch --forward --strip=1 --input ../duckdb-ci/patches/skip-base-extension-config.patch
+          patch --forward --strip=1 --input ../duckdb-ci/patches/skip-third-party.patch
+
       - name: Build extension
         uses: ./duckdb-ci/build-duckdb
         with:
