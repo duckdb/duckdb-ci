@@ -27,7 +27,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Detect docker changes
         id: changed-files
@@ -86,7 +86,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Login to GHCR
         uses: docker/login-action@v4
@@ -164,7 +164,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           path: duckdb-ci
 
@@ -220,7 +220,7 @@ jobs:
     runs-on: namespace-profile-linux-small
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Verify workflows with actionlint and shellcheck
         uses: ./lint-ci
@@ -232,7 +232,7 @@ jobs:
       - lint
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Detect runners
         id: detect
@@ -289,7 +289,7 @@ jobs:
     runs-on: ${{ matrix.runs_on }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Test custom checkout action
         uses: ./.github/actions/checkout
@@ -343,7 +343,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           path: duckdb-ci
 
@@ -391,7 +391,7 @@ jobs:
       - test-build-duckdb
     steps:
       - name: Checkout duckdb-ci
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           path: duckdb-ci
 
@@ -403,7 +403,7 @@ jobs:
 
       # Previous prepare action clears the duckdb-ci/ path
       - name: Checkout duckdb-ci
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           path: duckdb-ci
 
@@ -430,7 +430,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Setup Go
         uses: actions/setup-go@v6
