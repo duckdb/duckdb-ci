@@ -346,7 +346,20 @@ jobs:
           path: duckdb-ci
 
       - name: Setup cache
+        id: setup_cache
         uses: ./duckdb-ci/.github/actions/setup-cache
+
+      - name: Verify cache
+        shell: bash
+        env:
+          COMPILER_CACHE: ${{ steps.setup_cache.outputs.compiler-cache }}
+          COMPILER_LAUNCHER: ${{ steps.setup_cache.outputs.compiler-launcher }}
+        run: |
+          set -eux -o pipefail
+          test "${COMPILER_CACHE}" = "sccache"
+          test -x "${COMPILER_LAUNCHER}"
+          test "${CMAKE_C_COMPILER_LAUNCHER}" = "${COMPILER_LAUNCHER}"
+          test "${CMAKE_CXX_COMPILER_LAUNCHER}" = "${COMPILER_LAUNCHER}"
 
       - name: Checkout DuckDB
         uses: ./duckdb-ci/.github/actions/checkout
@@ -364,6 +377,17 @@ jobs:
           bundle: ${{ matrix.bundle }}
           upload-name: ${{ matrix.upload-name }}
           vcpkg-commit: ${{ matrix.vcpkg-commit }}
+
+      - name: Verify DuckDB used sccache
+        shell: bash
+        working-directory: duckdb
+        run: |
+          set -eux -o pipefail
+          if [[ ! -f build/release/CMakeCache.txt ]]; then
+            exit 0
+          fi
+          grep -E '^CMAKE_C_COMPILER_LAUNCHER(:[^=]+)?=.*/sccache$' build/release/CMakeCache.txt
+          grep -E '^CMAKE_CXX_COMPILER_LAUNCHER(:[^=]+)?=.*/sccache$' build/release/CMakeCache.txt
 
       - name: Verify uploaded artifact
         if: ${{ matrix.upload-name }}

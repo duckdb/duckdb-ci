@@ -11,7 +11,7 @@ outputs:
     value: ${{ steps.detect.outputs.compiler_cache }}
   compiler-launcher:
     description: "Resolved compiler launcher path when known"
-    value: ${{ steps.detect.outputs.compiler_launcher }}
+    value: ${{ steps.configure_sccache.outputs.compiler_launcher || steps.detect.outputs.compiler_launcher }}
 
 runs:
   using: "composite"
@@ -22,9 +22,9 @@ runs:
       run: |
         set -euo pipefail
 
-        if command -v nsc >/dev/null 2>&1 && command -v sccache >/dev/null 2>&1; then
+        if command -v nsc >/dev/null 2>&1; then
           compiler_cache=sccache
-          compiler_launcher="$(command -v sccache)"
+          compiler_launcher=""
         else
           compiler_cache=ccache
           compiler_launcher="$(command -v ccache || true)"
@@ -36,16 +36,52 @@ runs:
         } >> "$GITHUB_OUTPUT"
 
     - name: Configure sccache
+      id: configure_sccache
       if: steps.detect.outputs.compiler_cache == 'sccache'
       shell: bash
+      env:
+        SCCACHE_VERSION: 0.16.0
       run: |
         set -euo pipefail
 
+        case "$(uname -m)" in
+          x86_64|amd64)
+            sccache_target=x86_64-unknown-linux-musl
+            tool_cache_arch=x64
+            ;;
+          aarch64|arm64)
+            sccache_target=aarch64-unknown-linux-musl
+            tool_cache_arch=arm64
+            ;;
+          *)
+            echo "Unsupported architecture for sccache: $(uname -m)" >&2
+            exit 1
+            ;;
+        esac
+
+        tool_cache_root="${RUNNER_TOOL_CACHE:-${RUNNER_TEMP}/setup-cache/tool-cache}"
+        sccache_dir="${tool_cache_root}/sccache/${SCCACHE_VERSION}/${tool_cache_arch}"
+        compiler_launcher="${sccache_dir}/sccache"
+
+        if [[ ! -x "${compiler_launcher}" ]]; then
+          download_dir="${RUNNER_TEMP}/setup-cache/sccache-download"
+          rm -rf "${download_dir}"
+          mkdir -p "${download_dir}" "${sccache_dir}"
+          archive="${download_dir}/sccache.tar.gz"
+          curl --fail --retry 5 --retry-all-errors --location \
+            --output "${archive}" \
+            "https://github.com/mozilla/sccache/releases/download/v${SCCACHE_VERSION}/sccache-v${SCCACHE_VERSION}-${sccache_target}.tar.gz"
+          tar -xzf "${archive}" -C "${download_dir}"
+          install -m 0755 "${download_dir}/sccache-v${SCCACHE_VERSION}-${sccache_target}/sccache" "${compiler_launcher}"
+        fi
+
         nsc cache sccache setup --cache_name "${{ inputs.key }}" >> "$GITHUB_ENV"
         {
-          echo "CMAKE_C_COMPILER_LAUNCHER=${{ steps.detect.outputs.compiler_launcher }}"
-          echo "CMAKE_CXX_COMPILER_LAUNCHER=${{ steps.detect.outputs.compiler_launcher }}"
+          echo "CMAKE_C_COMPILER_LAUNCHER=${compiler_launcher}"
+          echo "CMAKE_CXX_COMPILER_LAUNCHER=${compiler_launcher}"
         } >> "$GITHUB_ENV"
+        echo "$(dirname "${compiler_launcher}")" >> "$GITHUB_PATH"
+        echo "compiler_launcher=${compiler_launcher}" >> "$GITHUB_OUTPUT"
 
     - name: Setup ccache
       if: steps.detect.outputs.compiler_cache == 'ccache'
