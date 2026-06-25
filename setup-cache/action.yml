@@ -4,6 +4,9 @@ inputs:
   key:
     description: "Optional ccache key override"
     default: "ccache"
+  workdir:
+    description: "Repository working directory used as the compiler cache base directory"
+    default: "."
 
 outputs:
   compiler-cache:
@@ -41,6 +44,7 @@ runs:
       uses: ./duckdb-ci/setup-sccache
       with:
         key: ${{ inputs.key }}
+        workdir: ${{ inputs.workdir }}
 
     - name: Setup ccache
       if: steps.detect.outputs.compiler_cache == 'ccache'

@@ -7,6 +7,9 @@ inputs:
   version:
     description: "sccache version"
     default: "0.16.0"
+  workdir:
+    description: "Repository working directory used as the sccache base directory"
+    default: "."
 
 outputs:
   compiler-launcher:

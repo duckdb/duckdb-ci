@@ -21,6 +21,14 @@ function input(name, defaultValue) {
   return value && value.trim() ? value.trim() : defaultValue;
 }
 
+function resolveWorkdir(workdir) {
+  if (path.isAbsolute(workdir)) {
+    return path.normalize(workdir);
+  }
+  const workspace = process.env.GITHUB_WORKSPACE || process.cwd();
+  return path.resolve(workspace, workdir);
+}
+
 function run(command, args, options = {}) {
   const result = childProcess.spawnSync(command, args, {
     encoding: "utf8",
@@ -89,6 +97,9 @@ function installSccache(version) {
 function main() {
   const key = input("key", "ccache");
   const version = input("version", "0.16.0");
+  const workdir = resolveWorkdir(input("workdir", "."));
+  // Extensions check out DuckDB as a duckdb/ submodule under the workdir.
+  const baseDirs = [workdir, path.join(workdir, "duckdb")];
   const compilerLauncher = installSccache(version);
 
   const nscEnv = run("nsc", ["cache", "sccache", "setup", "--cache_name", key], { capture: true });
@@ -99,10 +110,10 @@ function main() {
 
   appendLine("GITHUB_ENV", `CMAKE_C_COMPILER_LAUNCHER=${compilerLauncher}`);
   appendLine("GITHUB_ENV", `CMAKE_CXX_COMPILER_LAUNCHER=${compilerLauncher}`);
+  appendLine("GITHUB_ENV", `SCCACHE_BASEDIRS=${baseDirs.join(path.delimiter)}`);
   appendLine("GITHUB_PATH", path.dirname(compilerLauncher));
   appendLine("GITHUB_OUTPUT", `compiler-launcher=${compilerLauncher}`);
   appendLine("GITHUB_STATE", `compiler_launcher=${compilerLauncher}`);
 }
 
 main();
-
