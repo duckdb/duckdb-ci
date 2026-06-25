@@ -205,6 +205,9 @@ jobs:
           set -eux -o pipefail
           test "$(stat -c %Y /vcpkg/vcpkgLastBuiltCommitId)" = "${{ steps.pre_build.outputs.marker_mtime }}"
 
+          grep -E '^CMAKE_C_COMPILER_LAUNCHER(:[^=]+)?=.*/sccache$' duckdb/build/release/CMakeCache.txt
+          grep -E '^CMAKE_CXX_COMPILER_LAUNCHER(:[^=]+)?=.*/sccache$' duckdb/build/release/CMakeCache.txt
+
       - name: Test DuckDB
         working-directory: duckdb
         run:
@@ -328,6 +331,9 @@ jobs:
               ls -lh ${GITHUB_WORKSPACE}/vcpkg-cache
               ls -lh build/release
 
+              grep -E '^CMAKE_C_COMPILER_LAUNCHER(:[^=]+)?=.*/sccache$' build/release/CMakeCache.txt
+              grep -E '^CMAKE_CXX_COMPILER_LAUNCHER(:[^=]+)?=.*/sccache$' build/release/CMakeCache.txt
+
           - name: Upload release
             build: make release
             bundle: make release-artifact
@@ -338,6 +344,9 @@ jobs:
               ls -lh ${GITHUB_WORKSPACE}/vcpkg-cache
               ls -lh build/release
               ls -lh build/release-artifact.tar.gz
+
+              grep -E '^CMAKE_C_COMPILER_LAUNCHER(:[^=]+)?=.*/sccache$' build/release/CMakeCache.txt
+              grep -E '^CMAKE_CXX_COMPILER_LAUNCHER(:[^=]+)?=.*/sccache$' build/release/CMakeCache.txt
 
     steps:
       - name: Checkout
@@ -364,13 +373,6 @@ jobs:
           bundle: ${{ matrix.bundle }}
           upload-name: ${{ matrix.upload-name }}
           vcpkg-commit: ${{ matrix.vcpkg-commit }}
-
-      - name: Verify sccache
-        shell: bash
-        working-directory: duckdb
-        run: |
-          grep -E '^CMAKE_C_COMPILER_LAUNCHER(:[^=]+)?=.*/sccache$' build/release/CMakeCache.txt
-          grep -E '^CMAKE_CXX_COMPILER_LAUNCHER(:[^=]+)?=.*/sccache$' build/release/CMakeCache.txt
 
       - name: Verify uploaded artifact
         if: ${{ matrix.upload-name }}
