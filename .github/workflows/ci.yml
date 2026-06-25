@@ -177,7 +177,7 @@ jobs:
           fetch_depth: "0"
 
       - name: Setup cache
-        uses: ./duckdb-ci/.github/actions/setup-cache
+        uses: ./duckdb-ci/setup-cache
         with:
           key: ccache-${{ matrix.distro }}_${{ matrix.arch }}
 
@@ -347,7 +347,7 @@ jobs:
 
       - name: Setup cache
         id: setup_cache
-        uses: ./duckdb-ci/.github/actions/setup-cache
+        uses: ./duckdb-ci/setup-cache
 
       - name: Verify cache
         shell: bash
@@ -427,7 +427,7 @@ jobs:
           path: duckdb-ci
 
       - name: Setup cache
-        uses: ./duckdb-ci/.github/actions/setup-cache
+        uses: ./duckdb-ci/setup-cache
 
       - name: Build extension
         uses: ./duckdb-ci/build-duckdb
