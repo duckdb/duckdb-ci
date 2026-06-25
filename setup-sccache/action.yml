@@ -1,0 +1,18 @@
+name: "Setup sccache"
+description: "Install and configure sccache for Namespace runners"
+inputs:
+  key:
+    description: "Cache name"
+    default: "ccache"
+  version:
+    description: "sccache version"
+    default: "0.16.0"
+
+outputs:
+  compiler-launcher:
+    description: "Resolved sccache path"
+
+runs:
+  using: "node24"
+  main: "main.js"
+  post: "post.js"
