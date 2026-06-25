@@ -176,11 +176,9 @@ jobs:
           runner_provider: namespace
           fetch_depth: "0"
 
-      - name: Setup ccache
-        uses: hendrikmuhs/ccache-action@v1.2.23
+      - name: Setup cache
+        uses: ./duckdb-ci/.github/actions/setup-cache
         with:
-          max-size: 5GB
-          evict-old-files: 'job'
           key: ccache-${{ matrix.distro }}_${{ matrix.arch }}
 
       - name: Before build
@@ -347,11 +345,8 @@ jobs:
         with:
           path: duckdb-ci
 
-      - name: Setup ccache
-        uses: hendrikmuhs/ccache-action@v1.2.23
-        with:
-          max-size: 5GB
-          evict-old-files: 'job'
+      - name: Setup cache
+        uses: ./duckdb-ci/.github/actions/setup-cache
 
       - name: Checkout DuckDB
         uses: ./duckdb-ci/.github/actions/checkout
@@ -407,11 +402,8 @@ jobs:
         with:
           path: duckdb-ci
 
-      - name: Setup ccache
-        uses: hendrikmuhs/ccache-action@v1.2.23
-        with:
-          max-size: 5GB
-          evict-old-files: 'job'
+      - name: Setup cache
+        uses: ./duckdb-ci/.github/actions/setup-cache
 
       - name: Build extension
         uses: ./duckdb-ci/build-duckdb

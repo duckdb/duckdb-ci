@@ -3,6 +3,7 @@ COPY docker/cpp_packages.txt /tmp/cpp_packages.txt
 COPY docker/packages.py /usr/local/bin/packages.py
 ARG CMAKE_VERSION
 ARG CCACHE_VERSION
+ARG SCCACHE_VERSION
 ARG VCPKG_COMMIT
 
 # Common environment variables and mounts.
@@ -25,6 +26,12 @@ RUN set -eux; \
       build-base \
       ccache \
       cmake; \
+    mkdir -p /tmp/sccache && cd /tmp/sccache; \
+    wget -nv "https://github.com/mozilla/sccache/releases/download/v${SCCACHE_VERSION}/sccache-v${SCCACHE_VERSION}-x86_64-unknown-linux-musl.tar.gz"; \
+    tar -xf "sccache-v${SCCACHE_VERSION}-x86_64-unknown-linux-musl.tar.gz"; \
+    install -m 0755 "sccache-v${SCCACHE_VERSION}-x86_64-unknown-linux-musl/sccache" /usr/local/bin/sccache; \
+    cd /; \
+    rm -rf /tmp/sccache; \
     python3 /usr/local/bin/packages.py check --distro alpine --packages-file /tmp/cpp_packages.txt; \
     git clone "https://github.com/microsoft/vcpkg.git" /vcpkg; \
     git -C /vcpkg checkout --force "${VCPKG_COMMIT}"; \

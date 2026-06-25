@@ -24,6 +24,7 @@ CUDA_VERSION="13"
 BASE_IMAGE="manylinux_2_28"
 CMAKE_VERSION="${CMAKE_VERSION:-4.3.2}"
 CCACHE_VERSION="${CCACHE_VERSION:-4.13.5}"
+SCCACHE_VERSION="${SCCACHE_VERSION:-0.16.0}"
 VCPKG_COMMIT="${VCPKG_COMMIT:-84bab45d415d22042bd0b9081aea57f362da3f35}"
 REPO_PREFIX="${REPO_PREFIX:-duckdb-ci}"
 IMAGE_SUFFIX="${IMAGE_SUFFIX:-}"
@@ -55,6 +56,7 @@ build_toolchain() {
 			build_image "${repo}" "${root}/cpp/Dockerfile" "." \
 				--build-arg "CMAKE_VERSION=${CMAKE_VERSION}" \
 				--build-arg "CCACHE_VERSION=${CCACHE_VERSION}" \
+				--build-arg "SCCACHE_VERSION=${SCCACHE_VERSION}" \
 				--build-arg "VCPKG_COMMIT=${VCPKG_COMMIT}"
 			;;
 		rust)

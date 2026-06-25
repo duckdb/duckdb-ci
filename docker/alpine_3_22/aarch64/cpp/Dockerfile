@@ -24,6 +24,7 @@ FROM alpine:3.22
 COPY --from=gcompat /lib/libgcompat.so.0 /lib/ld-linux-aarch64.so.1 /lib/
 ARG CMAKE_VERSION
 ARG CCACHE_VERSION
+ARG SCCACHE_VERSION
 ARG VCPKG_COMMIT
 
 # Common environment variables and mounts.
@@ -51,6 +52,12 @@ RUN set -eux; \
       cmake \
       libstdc++ \
     ; \
+    mkdir -p /tmp/sccache && cd /tmp/sccache; \
+    wget -nv "https://github.com/mozilla/sccache/releases/download/v${SCCACHE_VERSION}/sccache-v${SCCACHE_VERSION}-aarch64-unknown-linux-musl.tar.gz"; \
+    tar -xf "sccache-v${SCCACHE_VERSION}-aarch64-unknown-linux-musl.tar.gz"; \
+    install -m 0755 "sccache-v${SCCACHE_VERSION}-aarch64-unknown-linux-musl/sccache" /usr/local/bin/sccache; \
+    cd /; \
+    rm -rf /tmp/sccache; \
     python3 /usr/local/bin/packages.py check --distro alpine --packages-file /tmp/cpp_packages.txt; \
     git clone "https://github.com/microsoft/vcpkg.git" /vcpkg; \
     git -C /vcpkg checkout --force "${VCPKG_COMMIT}"; \

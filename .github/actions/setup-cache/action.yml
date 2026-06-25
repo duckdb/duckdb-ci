@@ -1,0 +1,56 @@
+name: "Setup Cache"
+description: "Configure compiler cache for CI builds"
+inputs:
+  key:
+    description: "Optional ccache key override"
+    default: "ccache"
+
+outputs:
+  compiler-cache:
+    description: "Selected compiler cache: sccache or ccache"
+    value: ${{ steps.detect.outputs.compiler_cache }}
+  compiler-launcher:
+    description: "Resolved compiler launcher path when known"
+    value: ${{ steps.detect.outputs.compiler_launcher }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Detect compiler cache
+      id: detect
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        if command -v nsc >/dev/null 2>&1 && command -v sccache >/dev/null 2>&1; then
+          compiler_cache=sccache
+          compiler_launcher="$(command -v sccache)"
+        else
+          compiler_cache=ccache
+          compiler_launcher="$(command -v ccache || true)"
+        fi
+
+        {
+          echo "compiler_cache=${compiler_cache}"
+          echo "compiler_launcher=${compiler_launcher}"
+        } >> "$GITHUB_OUTPUT"
+
+    - name: Configure sccache
+      if: steps.detect.outputs.compiler_cache == 'sccache'
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        nsc cache sccache setup --cache_name "${{ inputs.key }}" >> "$GITHUB_ENV"
+        {
+          echo "CMAKE_C_COMPILER_LAUNCHER=${{ steps.detect.outputs.compiler_launcher }}"
+          echo "CMAKE_CXX_COMPILER_LAUNCHER=${{ steps.detect.outputs.compiler_launcher }}"
+        } >> "$GITHUB_ENV"
+
+    - name: Setup ccache
+      if: steps.detect.outputs.compiler_cache == 'ccache'
+      uses: hendrikmuhs/ccache-action@v1.2.23
+      with:
+        max-size: 5GB
+        evict-old-files: 'job'
+        key: ${{ inputs.key }}

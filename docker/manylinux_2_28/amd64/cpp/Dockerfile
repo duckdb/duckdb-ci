@@ -4,6 +4,7 @@ COPY docker/packages.py /usr/local/bin/packages.py
 
 ARG CMAKE_VERSION
 ARG CCACHE_VERSION
+ARG SCCACHE_VERSION
 ARG VCPKG_COMMIT
 
 # Common environment variables and mounts.
@@ -33,6 +34,12 @@ RUN set -eux; \
     rm -rf /tmp/ccache; \
     ccache --version; \
     ccache --version | awk 'NR==1 { split($3, v, "."); if (v[1] != 4) exit 1 }'; \
+    mkdir -p /tmp/sccache && cd /tmp/sccache; \
+    wget -nv "https://github.com/mozilla/sccache/releases/download/v${SCCACHE_VERSION}/sccache-v${SCCACHE_VERSION}-x86_64-unknown-linux-musl.tar.gz"; \
+    tar -xf "sccache-v${SCCACHE_VERSION}-x86_64-unknown-linux-musl.tar.gz"; \
+    install -m 0755 "sccache-v${SCCACHE_VERSION}-x86_64-unknown-linux-musl/sccache" /usr/local/bin/sccache; \
+    cd /; \
+    rm -rf /tmp/sccache; \
     dnf install -y gcc-toolset-14-gcc gcc-toolset-14-gcc-c++ gcc-toolset-14-binutils; \
     mkdir -p /tmp/cmake && cd /tmp/cmake; \
     wget -nv "https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION}/cmake-${CMAKE_VERSION}-linux-x86_64.sh"; \
