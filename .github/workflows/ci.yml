@@ -176,11 +176,9 @@ jobs:
           runner_provider: namespace
           fetch_depth: "0"
 
-      - name: Setup ccache
-        uses: hendrikmuhs/ccache-action@v1.2.23
+      - name: Setup cache
+        uses: ./duckdb-ci/setup-cache
         with:
-          max-size: 5GB
-          evict-old-files: 'job'
           key: ccache-${{ matrix.distro }}_${{ matrix.arch }}
 
       - name: Before build
@@ -206,6 +204,9 @@ jobs:
         run: |
           set -eux -o pipefail
           test "$(stat -c %Y /vcpkg/vcpkgLastBuiltCommitId)" = "${{ steps.pre_build.outputs.marker_mtime }}"
+
+          grep -E '^CMAKE_C_COMPILER_LAUNCHER(:[^=]+)?=.*/sccache$' duckdb/build/release/CMakeCache.txt
+          grep -E '^CMAKE_CXX_COMPILER_LAUNCHER(:[^=]+)?=.*/sccache$' duckdb/build/release/CMakeCache.txt
 
       - name: Test DuckDB
         working-directory: duckdb
@@ -330,6 +331,9 @@ jobs:
               ls -lh ${GITHUB_WORKSPACE}/vcpkg-cache
               ls -lh build/release
 
+              grep -E '^CMAKE_C_COMPILER_LAUNCHER(:[^=]+)?=.*/sccache$' build/release/CMakeCache.txt
+              grep -E '^CMAKE_CXX_COMPILER_LAUNCHER(:[^=]+)?=.*/sccache$' build/release/CMakeCache.txt
+
           - name: Upload release
             build: make release
             bundle: make release-artifact
@@ -341,17 +345,17 @@ jobs:
               ls -lh build/release
               ls -lh build/release-artifact.tar.gz
 
+              grep -E '^CMAKE_C_COMPILER_LAUNCHER(:[^=]+)?=.*/sccache$' build/release/CMakeCache.txt
+              grep -E '^CMAKE_CXX_COMPILER_LAUNCHER(:[^=]+)?=.*/sccache$' build/release/CMakeCache.txt
+
     steps:
       - name: Checkout
         uses: actions/checkout@v6
         with:
           path: duckdb-ci
 
-      - name: Setup ccache
-        uses: hendrikmuhs/ccache-action@v1.2.23
-        with:
-          max-size: 5GB
-          evict-old-files: 'job'
+      - name: Setup cache
+        uses: ./duckdb-ci/setup-cache
 
       - name: Checkout DuckDB
         uses: ./duckdb-ci/.github/actions/checkout
@@ -407,11 +411,8 @@ jobs:
         with:
           path: duckdb-ci
 
-      - name: Setup ccache
-        uses: hendrikmuhs/ccache-action@v1.2.23
-        with:
-          max-size: 5GB
-          evict-old-files: 'job'
+      - name: Setup cache
+        uses: ./duckdb-ci/setup-cache
 
       - name: Build extension
         uses: ./duckdb-ci/build-duckdb
