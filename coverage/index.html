@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DuckDB Coverage</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main class="viewer">
+    <section id="status-panel" class="status-panel" aria-live="polite">
+      <h1>DuckDB Coverage</h1>
+      <p id="status-message">Preparing coverage report...</p>
+      <progress id="progress" aria-label="Coverage report progress"></progress>
+      <p id="status-detail" class="status-detail"></p>
+    </section>
+    <iframe id="report-frame" title="Coverage report"></iframe>
+  </main>
+
+  <script src="vendor/fflate/fflate.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
