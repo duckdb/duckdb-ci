@@ -1,0 +1,71 @@
+:root {
+  color-scheme: light;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: #f4f6f8;
+  color: #1b1f24;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+.viewer {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+}
+
+.viewer {
+  position: relative;
+  overflow: hidden;
+}
+
+.status-panel {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 24px;
+  text-align: center;
+  background: #f4f6f8;
+}
+
+.status-panel[hidden] {
+  display: none;
+}
+
+.status-panel h1 {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 650;
+}
+
+.status-panel p {
+  max-width: 720px;
+  margin: 0;
+  font-size: 16px;
+  line-height: 1.5;
+}
+
+.status-detail {
+  color: #5d6673;
+  font-size: 14px;
+}
+
+progress {
+  width: min(420px, 100%);
+  height: 12px;
+}
+
+#report-frame {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: #fff;
+}
