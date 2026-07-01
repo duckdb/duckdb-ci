@@ -271,6 +271,53 @@ jobs:
           [[ "$(jq -r '.macos_arm64' <<<"${RUNNERS_JSON}")" == "${RUNNER_MACOS_ARM64}" ]]
           [[ "$(jq -r '.macos_14_arm64' <<<"${RUNNERS_JSON}")" == "${RUNNER_MACOS_14_ARM64}" ]]
 
+  test-matrix:
+    name: Test matrix
+    runs-on: namespace-profile-linux-small
+    needs:
+      - prepare
+      - lint
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - name: Install test deps
+        run: python -m pip install pytest
+
+      - name: Run tests
+        run: python -m pytest matrix
+
+      - name: Detect runners
+        id: detect
+        uses: ./detect-runners
+
+      - name: Compute matrix
+        id: matrix
+        uses: ./matrix
+        with:
+          runners: ${{ steps.detect.outputs.runners }}
+          reduced_ci_mode: auto
+          image_version: ${{ needs.prepare.outputs.image_version }}
+          image_suffix: ${{ needs.prepare.outputs.image_suffix }}
+
+      - name: Validate matrix outputs
+        shell: bash
+        env:
+          LINUX: ${{ steps.matrix.outputs.linux }}
+          MACOS: ${{ steps.matrix.outputs.macos }}
+          WINDOWS: ${{ steps.matrix.outputs.windows }}
+          WASM: ${{ steps.matrix.outputs.wasm }}
+        run: |
+          set -euo pipefail
+          for output in "$LINUX" "$MACOS" "$WINDOWS" "$WASM"; do
+            jq -e '.include | type == "array"' <<<"$output" >/dev/null
+          done
+
   test-checkout:
     name: Test checkout (${{ matrix.runner_provider }}, ${{ matrix.runs_on }})
 
@@ -509,6 +556,7 @@ jobs:
       - test-checkout
       - test-build-duckdb
       - test-detect-runners
+      - test-matrix
       - test-extension-template
       - test-bot
       - build-images

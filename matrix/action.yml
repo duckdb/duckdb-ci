@@ -1,0 +1,71 @@
+name: "Matrix"
+description: "Compute DuckDB extension build matrices"
+
+inputs:
+  exclude_archs:
+    description: "Semicolon-separated duckdb_arch values to exclude"
+    required: false
+    default: ""
+  opt_in_archs:
+    description: "Semicolon-separated opt-in duckdb_arch values"
+    required: false
+    default: ""
+  runners:
+    description: "JSON object with runner labels keyed by duckdb_arch or runner alias"
+    required: false
+    default: "{}"
+  reduced_ci_mode:
+    description: "Reduced CI mode: disabled, enabled, or auto"
+    required: false
+    default: "auto"
+  image_version:
+    description: "Container image version tag"
+    required: false
+    default: ""
+  image_suffix:
+    description: "Optional suffix appended to container image names"
+    required: false
+    default: ""
+  repository_owner:
+    description: "Owner used for GHCR image paths"
+    required: false
+    default: ""
+  config_root:
+    description: "Root directory for optional DuckDB .github/config extension config files"
+    required: false
+    default: "."
+
+outputs:
+  linux:
+    description: "Linux job matrix"
+    value: ${{ steps.matrix.outputs.linux }}
+  macos:
+    description: "macOS job matrix"
+    value: ${{ steps.matrix.outputs.macos }}
+  windows:
+    description: "Windows job matrix"
+    value: ${{ steps.matrix.outputs.windows }}
+  wasm:
+    description: "Wasm job matrix"
+    value: ${{ steps.matrix.outputs.wasm }}
+
+runs:
+  using: "composite"
+  steps:
+    - id: matrix
+      name: Compute matrix
+      shell: bash
+      run: |
+        set -euo pipefail
+        export PYTHONPATH="${GITHUB_ACTION_PATH}/..${PYTHONPATH:+:${PYTHONPATH}}"
+        python3 -m matrix.main \
+          --extensions "${GITHUB_ACTION_PATH}/extensions.json" \
+          --exclude-archs "${{ inputs.exclude_archs }}" \
+          --opt-in-archs "${{ inputs.opt_in_archs }}" \
+          --runners '${{ inputs.runners }}' \
+          --reduced-ci-mode "${{ inputs.reduced_ci_mode }}" \
+          --image-version "${{ inputs.image_version }}" \
+          --image-suffix "${{ inputs.image_suffix }}" \
+          --repository-owner "${{ inputs.repository_owner }}" \
+          --config-root "${{ inputs.config_root }}" \
+          --out "$GITHUB_OUTPUT"
