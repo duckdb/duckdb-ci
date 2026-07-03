@@ -10,6 +10,8 @@
   var statusDetail = document.getElementById("status-detail");
   var progress = document.getElementById("progress");
   var reportFrame = document.getElementById("report-frame");
+  var reportBasePath = null;
+  var hashChangeFromFrame = false;
 
   function getBasePath() {
     return new URL(".", window.location.href).pathname;
@@ -125,6 +127,69 @@
       path[path.length - 1] !== "/";
   }
 
+  function getHashReportPath() {
+    var hash = window.location.hash || "";
+    if (!hash.startsWith("#/")) {
+      return {
+        path: "index.html",
+        fragment: ""
+      };
+    }
+
+    var value = hash.slice(2);
+    var fragmentIndex = value.indexOf("#");
+    var path = fragmentIndex === -1 ? value : value.slice(0, fragmentIndex);
+    var fragment = fragmentIndex === -1 ? "" : value.slice(fragmentIndex);
+
+    try {
+      path = decodeURI(path);
+    } catch (error) {
+      return {
+        path: "index.html",
+        fragment: ""
+      };
+    }
+
+    if (!isSafeZipPath(path)) {
+      return {
+        path: "index.html",
+        fragment: ""
+      };
+    }
+    return {
+      path: path,
+      fragment: fragment
+    };
+  }
+
+  function getReportUrlFromHash(basePath) {
+    var target = getHashReportPath();
+    return basePath + "__report__/" + target.path + target.fragment;
+  }
+
+  function getHashFromReportUrl(url, basePath) {
+    if (url.origin !== window.location.origin || !url.pathname.startsWith(basePath + "__report__/")) {
+      return null;
+    }
+
+    var path = url.pathname.slice((basePath + "__report__/").length);
+    if (!isSafeZipPath(path)) {
+      return null;
+    }
+    return "#/" + path + url.hash;
+  }
+
+  function navigateToHashReport() {
+    if (!reportBasePath) {
+      return;
+    }
+    var target = getReportUrlFromHash(reportBasePath);
+    var current = reportFrame.contentWindow ? reportFrame.contentWindow.location.pathname + reportFrame.contentWindow.location.hash : "";
+    if (current !== target) {
+      reportFrame.src = target;
+    }
+  }
+
   function contentTypeFor(path) {
     if (path.endsWith(".html")) {
       return "text/html; charset=utf-8";
@@ -183,6 +248,7 @@
     var name = getReportName();
     var basePath = getBasePath();
     var artifactUrl = getArtifactUrl(name);
+    reportBasePath = basePath;
 
     try {
       await registerServiceWorker();
@@ -218,7 +284,29 @@
     reportFrame.addEventListener("load", function () {
       statusPanel.hidden = true;
     }, { once: true });
-    reportFrame.src = basePath + "__report__/index.html";
+    reportFrame.addEventListener("load", function () {
+      var reportHash;
+      try {
+        reportHash = getHashFromReportUrl(new URL(reportFrame.contentWindow.location.href), basePath);
+      } catch (error) {
+        return;
+      }
+
+      if (reportHash && window.location.hash !== reportHash) {
+        hashChangeFromFrame = true;
+        window.location.hash = reportHash;
+      }
+    });
+
+    window.addEventListener("hashchange", function () {
+      if (hashChangeFromFrame) {
+        hashChangeFromFrame = false;
+        return;
+      }
+      navigateToHashReport();
+    });
+
+    reportFrame.src = getReportUrlFromHash(basePath);
   }
 
   load();
