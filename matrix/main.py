@@ -5,7 +5,14 @@ import os
 import sys
 from pathlib import Path
 
-from .matrix import compute_matrices, detect_event_type_from_env, load_extensions_config, render_github_output, write_github_output
+from .matrix import (
+    compute_matrices,
+    detect_event_type_from_env,
+    load_extensions_config,
+    render_github_output,
+    render_readable_matrix_log,
+    write_github_output,
+)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -16,9 +23,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--runners", default="{}")
     parser.add_argument("--reduced-ci-mode", default="auto")
     parser.add_argument("--image-version", default="")
-    parser.add_argument("--image-suffix", default="")
-    parser.add_argument("--repository-owner", default="")
-    parser.add_argument("--config-root", default=".")
+    parser.add_argument("--groups", required=True)
     parser.add_argument("--out", default="")
     return parser
 
@@ -26,7 +31,6 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     event_type = detect_event_type_from_env()
-    repository_owner = args.repository_owner or os.environ.get("GITHUB_REPOSITORY_OWNER", "duckdb")
     matrices = compute_matrices(
         load_extensions_config(Path(args.extensions)),
         exclude_archs=args.exclude_archs,
@@ -35,18 +39,20 @@ def main(argv: list[str] | None = None) -> int:
         reduced_ci_mode=args.reduced_ci_mode,
         event_type=event_type,
         image_version=args.image_version,
-        image_suffix=args.image_suffix,
-        repository_owner=repository_owner,
-        config_root=Path(args.config_root),
+        groups=args.groups,
     )
 
-    if args.out:
-        write_github_output(Path(args.out), matrices)
-    else:
+    output_path = Path(args.out) if args.out else None
+    if output_path is None:
         github_output = os.environ.get("GITHUB_OUTPUT", "")
         if github_output:
-            write_github_output(Path(github_output), matrices)
-    sys.stdout.write(render_github_output(matrices))
+            output_path = Path(github_output)
+
+    if output_path:
+        write_github_output(output_path, matrices)
+        sys.stdout.write(render_readable_matrix_log(matrices))
+    else:
+        sys.stdout.write(render_github_output(matrices))
     return 0
 
 

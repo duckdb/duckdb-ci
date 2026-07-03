@@ -22,39 +22,11 @@ UNKNOWN = "unknown"
 
 @dataclass(frozen=True)
 class ExtensionGroup:
-    artifact_prefix: str
-    extra_toolchains: str
+    key: str
+    toolchain: str
     default_exclude_archs: str
     opt_in_archs: str | None
     config_paths: tuple[str, ...]
-
-
-EXTENSION_GROUPS = (
-    ExtensionGroup(
-        artifact_prefix="main-extensions",
-        extra_toolchains="unixodbc;parser_tools",
-        default_exclude_archs="",
-        opt_in_archs=None,
-        config_paths=(
-            ".github/config/in_tree_extensions.cmake",
-            ".github/config/out_of_tree_extensions.cmake",
-        ),
-    ),
-    ExtensionGroup(
-        artifact_prefix="rust-based-extensions",
-        extra_toolchains="rust",
-        default_exclude_archs="wasm_mvp;wasm_eh;wasm_threads;windows_amd64_rtools;windows_amd64_mingw;linux_amd64_musl",
-        opt_in_archs="",
-        config_paths=(".github/config/rust_based_extensions.cmake",),
-    ),
-    ExtensionGroup(
-        artifact_prefix="external-extensions",
-        extra_toolchains="rust",
-        default_exclude_archs="wasm_mvp;wasm_eh;wasm_threads;windows_amd64_mingw;windows_amd64;linux_amd64_musl",
-        opt_in_archs="",
-        config_paths=(".github/config/external_extensions.cmake",),
-    ),
-)
 
 
 class MatrixError(ValueError):
@@ -195,6 +167,121 @@ def parse_runners(raw: str | None) -> dict[str, list[str]]:
     return result
 
 
+def parse_groups(raw: str | None) -> tuple[ExtensionGroup, ...]:
+    if not raw or not raw.strip():
+        raise MatrixError("groups input is required")
+    groups: dict[str, dict[str, Any]] = {}
+    current_group: str | None = None
+    current_list_field: str | None = None
+    saw_root = False
+
+    for line_number, raw_line in enumerate(raw.splitlines(), start=1):
+        if not raw_line.strip():
+            continue
+        indent = len(raw_line) - len(raw_line.lstrip(" "))
+        if indent != len(raw_line) - len(raw_line.lstrip()):
+            raise MatrixError(f"groups line {line_number}: tabs are not supported")
+        line = raw_line.strip()
+
+        if indent == 0:
+            if line != "groups:":
+                raise MatrixError(f"groups line {line_number}: expected 'groups:'")
+            if saw_root:
+                raise MatrixError("groups root is duplicated")
+            saw_root = True
+            continue
+        if not saw_root:
+            raise MatrixError(f"groups line {line_number}: expected 'groups:' before group entries")
+
+        if indent == 2:
+            if not line.endswith(":") or line == ":":
+                raise MatrixError(f"groups line {line_number}: expected group mapping")
+            current_group = line[:-1].strip()
+            if not current_group:
+                raise MatrixError(f"groups line {line_number}: group key cannot be empty")
+            if current_group in groups:
+                raise MatrixError(f"group {current_group!r} is duplicated")
+            groups[current_group] = {}
+            current_list_field = None
+            continue
+
+        if current_group is None:
+            raise MatrixError(f"groups line {line_number}: field without group")
+
+        if indent == 4:
+            if ":" not in line:
+                raise MatrixError(f"groups line {line_number}: expected field mapping")
+            field, value = line.split(":", 1)
+            field = field.strip()
+            value = value.strip()
+            if field not in {"config", "default_exclude_archs", "opt_in_archs", "toolchain"}:
+                raise MatrixError(f"group {current_group!r} has unknown field: {field}")
+            if field in groups[current_group]:
+                raise MatrixError(f"group {current_group!r} field {field!r} is duplicated")
+            if value:
+                groups[current_group][field] = _parse_yaml_scalar(value)
+                current_list_field = None
+            else:
+                if field != "config":
+                    raise MatrixError(f"group {current_group!r} field {field!r} cannot be a list")
+                groups[current_group][field] = []
+                current_list_field = field
+            continue
+
+        if indent == 6 and current_list_field:
+            if not line.startswith("- "):
+                raise MatrixError(f"groups line {line_number}: expected list item")
+            groups[current_group][current_list_field].append(_parse_yaml_scalar(line[2:].strip()))
+            continue
+
+        raise MatrixError(f"groups line {line_number}: unsupported indentation")
+
+    if not saw_root:
+        raise MatrixError("groups input must start with 'groups:'")
+    if not groups:
+        raise MatrixError("groups mapping cannot be empty")
+
+    parsed: list[ExtensionGroup] = []
+    for key in sorted(groups):
+        config = groups[key]
+        missing = {"config", "toolchain"} - set(config)
+        if missing:
+            fields = ", ".join(sorted(missing))
+            raise MatrixError(f"group {key!r} is missing fields: {fields}")
+        config_paths = config["config"]
+        if isinstance(config_paths, str):
+            paths = (config_paths,)
+        elif isinstance(config_paths, list) and all(isinstance(path, str) and path for path in config_paths):
+            paths = tuple(config_paths)
+        else:
+            raise MatrixError(f"group {key!r} config must be a string or string list")
+        toolchain = config["toolchain"]
+        if not isinstance(toolchain, str) or not toolchain:
+            raise MatrixError(f"group {key!r} toolchain must be a non-empty string")
+        for field in ("default_exclude_archs", "opt_in_archs"):
+            value = config.get(field)
+            if value is not None and not isinstance(value, str):
+                raise MatrixError(f"group {key!r} {field} must be a string")
+        parsed.append(
+            ExtensionGroup(
+                key=key,
+                toolchain=toolchain,
+                default_exclude_archs=config.get("default_exclude_archs", ""),
+                opt_in_archs=config.get("opt_in_archs"),
+                config_paths=paths,
+            )
+        )
+    return tuple(parsed)
+
+
+def _parse_yaml_scalar(value: str) -> str:
+    if value.startswith(("'", '"')) or value.endswith(("'", '"')):
+        if len(value) < 2 or value[0] != value[-1] or value[0] not in {"'", '"'}:
+            raise MatrixError(f"invalid quoted scalar: {value!r}")
+        return value[1:-1]
+    return value
+
+
 def runner_alias(duckdb_arch: str) -> str | None:
     if duckdb_arch in {"linux_amd64", "linux_amd64_musl"}:
         return "linux_x64"
@@ -224,10 +311,12 @@ def resolve_runner(entry: dict[str, Any], overrides: dict[str, list[str]]) -> li
     return [entry["runner"]]
 
 
-def load_group_config(group: ExtensionGroup, root: Path) -> str:
+def load_group_config(group: ExtensionGroup) -> str:
     parts: list[str] = []
     for relative_path in group.config_paths:
-        path = root / relative_path
+        path = Path(relative_path)
+        if not path.is_absolute():
+            path = Path.cwd() / path
         if path.exists():
             parts.append(path.read_text(encoding="utf-8").rstrip("\n"))
     return "\n\n".join(part for part in parts if part)
@@ -244,7 +333,7 @@ def include_entry(entry: dict[str, Any], excluded: set[str], opt_in: set[str], r
     return True
 
 
-def linux_container_name(duckdb_arch: str, artifact_prefix: str) -> str:
+def linux_container_name(duckdb_arch: str, toolchain: str) -> str:
     if duckdb_arch.startswith("linux_amd64"):
         host_arch = "amd64"
     elif duckdb_arch.startswith("linux_arm64"):
@@ -253,7 +342,6 @@ def linux_container_name(duckdb_arch: str, artifact_prefix: str) -> str:
         raise MatrixError(f"unsupported Linux duckdb_arch for container: {duckdb_arch}")
 
     base_image = "alpine_3_22" if duckdb_arch.endswith("_musl") else "manylinux_2_28"
-    toolchain = "main" if artifact_prefix == "main-extensions" else "rust"
     return f"{base_image}_{host_arch}_{toolchain}"
 
 
@@ -265,28 +353,24 @@ def build_job(
     effective_opt_in_archs: str,
     extension_config: str,
     image_version: str,
-    image_suffix: str,
-    repository_owner: str,
 ) -> dict[str, Any]:
     job: dict[str, Any] = {
         "runner": runner,
         "vcpkg_target_triplet": entry["vcpkg_target_triplet"],
         "vcpkg_host_triplet": entry["vcpkg_host_triplet"],
         "duckdb_arch": entry["duckdb_arch"],
-        "artifact_prefix": group.artifact_prefix,
+        "artifact_prefix": f"{group.key}-extensions",
         "exclude_archs": effective_exclude_archs,
         "opt_in_archs": effective_opt_in_archs,
-        "extra_toolchains": group.extra_toolchains,
         "extension_config": extension_config,
     }
     if "osx_build_arch" in entry:
         job["osx_build_arch"] = entry["osx_build_arch"]
     if entry["duckdb_arch"].startswith("linux_"):
-        container_name = linux_container_name(entry["duckdb_arch"], group.artifact_prefix)
-        container_name_with_suffix = f"{container_name}{image_suffix}"
-        job["container_name"] = container_name_with_suffix
+        container_name = linux_container_name(entry["duckdb_arch"], group.toolchain)
+        job["container_name"] = container_name
         if image_version:
-            job["container"] = f"ghcr.io/{repository_owner}/duckdb-ci/{container_name_with_suffix}:{image_version}"
+            job["container"] = f"ghcr.io/duckdb/duckdb-ci/{container_name}:{image_version}"
     return job
 
 
@@ -299,13 +383,11 @@ def compute_matrices(
     reduced_ci_mode: str = "auto",
     event_type: str = UNKNOWN,
     image_version: str = "",
-    image_suffix: str = "",
-    repository_owner: str = "duckdb",
-    config_root: Path | None = None,
+    groups: str | None = None,
 ) -> dict[str, dict[str, list[dict[str, Any]]]]:
     reduced_ci = resolve_reduced_ci_mode(reduced_ci_mode, event_type)
     runner_overrides = parse_runners(runners)
-    config_root = config_root or Path.cwd()
+    extension_groups = parse_groups(groups)
 
     result: dict[str, dict[str, list[dict[str, Any]]]] = {
         output_platform: {"include": []} for output_platform in OUTPUT_PLATFORMS
@@ -314,12 +396,17 @@ def compute_matrices(
         if config_key not in extensions:
             raise MatrixError(f"missing platform in extensions.json: {config_key}")
         entries = extensions[config_key]["include"]
-        for group in EXTENSION_GROUPS:
+        for group in extension_groups:
             effective_exclude_archs = combine_lists(group.default_exclude_archs, exclude_archs)
-            effective_opt_in_archs = opt_in_archs if group.opt_in_archs is None else group.opt_in_archs
+            if group.opt_in_archs is not None:
+                effective_opt_in_archs = group.opt_in_archs
+            elif group.key == "main":
+                effective_opt_in_archs = opt_in_archs
+            else:
+                effective_opt_in_archs = ""
             excluded = set(split_list(effective_exclude_archs))
             opt_in = set(split_list(effective_opt_in_archs))
-            extension_config = load_group_config(group, config_root)
+            extension_config = load_group_config(group)
             for entry in entries:
                 if not include_entry(entry, excluded, opt_in, reduced_ci):
                     continue
@@ -332,8 +419,6 @@ def compute_matrices(
                         effective_opt_in_archs,
                         extension_config,
                         image_version,
-                        image_suffix,
-                        repository_owner,
                     )
                 )
         result[output_platform]["include"].sort(
@@ -348,6 +433,74 @@ def render_github_output(matrices: dict[str, dict[str, list[dict[str, Any]]]]) -
         payload = json.dumps(matrices[key], separators=(",", ":"), sort_keys=True)
         lines.append(f"{key}={payload}")
     return "\n".join(lines) + "\n"
+
+
+def render_readable_matrix_log(matrices: dict[str, dict[str, list[dict[str, Any]]]]) -> str:
+    lines: list[str] = []
+    for platform in OUTPUT_PLATFORMS:
+        if lines:
+            lines.append("")
+        jobs = matrices[platform]["include"]
+        lines.append(f"{platform} ({len(jobs)} {'job' if len(jobs) == 1 else 'jobs'})")
+        if not jobs:
+            lines.append("  No jobs")
+            continue
+
+        columns = [
+            ("#", lambda index, job: str(index)),
+            ("duckdb_arch", lambda index, job: _display_value(job.get("duckdb_arch"))),
+            ("artifact_prefix", lambda index, job: _display_value(job.get("artifact_prefix"))),
+            ("runner", lambda index, job: _display_value(job.get("runner"))),
+            ("vcpkg_target_triplet", lambda index, job: _display_value(job.get("vcpkg_target_triplet"))),
+            ("vcpkg_host_triplet", lambda index, job: _display_value(job.get("vcpkg_host_triplet"))),
+            ("container_name", lambda index, job: _display_value(job.get("container_name"))),
+        ]
+        if any(job.get("osx_build_arch") for job in jobs):
+            columns.append(("osx_build_arch", lambda index, job: _display_value(job.get("osx_build_arch"))))
+
+        rows = [[formatter(index, job) for _, formatter in columns] for index, job in enumerate(jobs, start=1)]
+        widths = [
+            max(len(header), *(len(row[column_index]) for row in rows))
+            for column_index, (header, _) in enumerate(columns)
+        ]
+        header = "  " + "  ".join(
+            header.ljust(widths[column_index]) for column_index, (header, _) in enumerate(columns)
+        )
+        separator = "  " + "  ".join("-" * width for width in widths)
+        lines.append(header)
+        lines.append(separator)
+        for row in rows:
+            lines.append(
+                "  " + "  ".join(value.ljust(widths[column_index]) for column_index, value in enumerate(row))
+            )
+
+        lines.append("")
+        lines.append("  Details")
+        for index, job in enumerate(jobs, start=1):
+            lines.append(f"  Job {index}:")
+            _append_detail(lines, "extension_config", job.get("extension_config"), indent="    ")
+            _append_detail(lines, "exclude_archs", job.get("exclude_archs"), indent="    ")
+            _append_detail(lines, "opt_in_archs", job.get("opt_in_archs"), indent="    ")
+            _append_detail(lines, "container", job.get("container"), indent="    ")
+    return "\n".join(lines) + "\n"
+
+
+def _display_value(value: Any) -> str:
+    if value is None or value == "":
+        return "<empty>"
+    if isinstance(value, list):
+        return ",".join(str(item) for item in value) if value else "<empty>"
+    return str(value)
+
+
+def _append_detail(lines: list[str], label: str, value: Any, *, indent: str) -> None:
+    rendered = _display_value(value)
+    if "\n" not in rendered:
+        lines.append(f"{indent}{label}: {rendered}")
+        return
+    lines.append(f"{indent}{label}:")
+    for line in rendered.splitlines():
+        lines.append(f"{indent}  {line}")
 
 
 def write_github_output(output_path: Path, matrices: dict[str, dict[str, list[dict[str, Any]]]]) -> None:

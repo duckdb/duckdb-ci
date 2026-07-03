@@ -22,18 +22,9 @@ inputs:
     description: "Container image version tag"
     required: false
     default: ""
-  image_suffix:
-    description: "Optional suffix appended to container image names"
-    required: false
-    default: ""
-  repository_owner:
-    description: "Owner used for GHCR image paths"
-    required: false
-    default: ""
-  config_root:
-    description: "Root directory for optional DuckDB .github/config extension config files"
-    required: false
-    default: "."
+  groups:
+    description: "YAML extension group configuration"
+    required: true
 
 outputs:
   linux:
@@ -65,7 +56,5 @@ runs:
           --runners '${{ inputs.runners }}' \
           --reduced-ci-mode "${{ inputs.reduced_ci_mode }}" \
           --image-version "${{ inputs.image_version }}" \
-          --image-suffix "${{ inputs.image_suffix }}" \
-          --repository-owner "${{ inputs.repository_owner }}" \
-          --config-root "${{ inputs.config_root }}" \
+          --groups "${{ inputs.groups }}" \
           --out "$GITHUB_OUTPUT"
