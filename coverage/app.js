@@ -4,12 +4,15 @@
   var CACHE_NAME = "duckdb-coverage-report-v1";
   var DEFAULT_NAME = "linux-release-default-tests";
   var ARTIFACT_BASE = "https://artifacts.duckdb.org/latest/";
+  var PARALLEL_DOWNLOAD_RANGES = 8;
 
   var statusPanel = document.getElementById("status-panel");
   var statusMessage = document.getElementById("status-message");
   var statusDetail = document.getElementById("status-detail");
   var progress = document.getElementById("progress");
   var reportFrame = document.getElementById("report-frame");
+  var reportBasePath = null;
+  var hashChangeFromFrame = false;
 
   function getBasePath() {
     return new URL(".", window.location.href).pathname;
@@ -73,42 +76,52 @@
     await waitForController();
   }
 
-  async function downloadArtifact(url, name) {
-    setStatus("Downloading coverage report...", "coverage-" + name + ".zip", null);
-
-    var response = await fetch(url, { redirect: "follow" });
-    if (!response.ok) {
-      throw new Error("HTTP " + response.status + " while fetching " + url);
+  function updateDownloadStatus(received, contentLength) {
+    if (contentLength) {
+      setStatus(
+        "Downloading coverage report...",
+        formatBytes(received) + " of " + formatBytes(contentLength),
+        (received / contentLength) * 100
+      );
+    } else {
+      setStatus("Downloading coverage report...", formatBytes(received) + " downloaded", null);
     }
+  }
+
+  async function readResponseBody(response, onChunk) {
     if (!response.body) {
-      return new Uint8Array(await response.arrayBuffer());
+      var buffer = new Uint8Array(await response.arrayBuffer());
+      onChunk(buffer);
+      return;
     }
 
-    var contentLength = Number(response.headers.get("content-length")) || 0;
     var reader = response.body.getReader();
-    var chunks = [];
-    var received = 0;
 
     while (true) {
       var result = await reader.read();
       if (result.done) {
         break;
       }
-      chunks.push(result.value);
-      received += result.value.length;
-
-      if (contentLength) {
-        setStatus(
-          "Downloading coverage report...",
-          formatBytes(received) + " of " + formatBytes(contentLength),
-          (received / contentLength) * 100
-        );
-      } else {
-        setStatus("Downloading coverage report...", formatBytes(received) + " downloaded", null);
-      }
+      onChunk(result.value);
     }
+  }
 
-    var bytes = new Uint8Array(received);
+  async function downloadArtifactSingle(url) {
+    var response = await fetch(url, { redirect: "follow" });
+    if (!response.ok) {
+      throw new Error("HTTP " + response.status + " while fetching " + url);
+    }
+    var contentLength = Number(response.headers.get("content-length")) || 0;
+    var chunks = [];
+    var received = 0;
+
+    await readResponseBody(response, function (chunk) {
+      chunks.push(chunk);
+      received += chunk.length;
+      updateDownloadStatus(received, contentLength);
+    });
+
+    var bytes = new Uint8Array(contentLength || received);
     var offset = 0;
     for (var i = 0; i < chunks.length; i++) {
       bytes.set(chunks[i], offset);
@@ -117,12 +130,145 @@
     return bytes;
   }
 
+  function getRanges(contentLength, count) {
+    var ranges = [];
+    var chunkSize = Math.ceil(contentLength / count);
+
+    for (var i = 0; i < count; i++) {
+      var start = i * chunkSize;
+      var end = Math.min(contentLength - 1, start + chunkSize - 1);
+      if (start <= end) {
+        ranges.push({
+          start: start,
+          end: end
+        });
+      }
+    }
+    return ranges;
+  }
+
+  async function downloadArtifactParallel(url) {
+    var headResponse = await fetch(url, {
+      method: "HEAD",
+      redirect: "follow"
+    });
+    if (!headResponse.ok) {
+      throw new Error("HTTP " + headResponse.status + " while checking " + url);
+    }
+
+    var contentLength = Number(headResponse.headers.get("content-length")) || 0;
+    var acceptRanges = (headResponse.headers.get("accept-ranges") || "").toLowerCase();
+    if (!contentLength || acceptRanges !== "bytes") {
+      throw new Error("Server does not support ranged downloads.");
+    }
+
+    var bytes = new Uint8Array(contentLength);
+    var received = 0;
+    var ranges = getRanges(contentLength, PARALLEL_DOWNLOAD_RANGES);
+
+    await Promise.all(ranges.map(async function (range) {
+      var response = await fetch(headResponse.url, {
+        headers: {
+          Range: "bytes=" + range.start + "-" + range.end
+        }
+      });
+      if (response.status !== 206) {
+        throw new Error("HTTP " + response.status + " while fetching byte range.");
+      }
+
+      var offset = range.start;
+      await readResponseBody(response, function (chunk) {
+        bytes.set(chunk, offset);
+        offset += chunk.length;
+        received += chunk.length;
+        updateDownloadStatus(received, contentLength);
+      });
+    }));
+
+    return bytes;
+  }
+
+  async function downloadArtifact(url, name) {
+    setStatus("Downloading coverage report...", "coverage-" + name + ".zip", null);
+
+    try {
+      return await downloadArtifactParallel(url);
+    } catch (error) {
+      setStatus("Downloading coverage report...", "coverage-" + name + ".zip", null);
+    }
+
+    return downloadArtifactSingle(url);
+  }
+
   function isSafeZipPath(path) {
     return path &&
       path[0] !== "/" &&
       !path.match(/^[a-zA-Z]:/) &&
       !path.split("/").includes("..") &&
       path[path.length - 1] !== "/";
+  }
+
+  function getHashReportPath() {
+    var hash = window.location.hash || "";
+    if (!hash.startsWith("#/")) {
+      return {
+        path: "index.html",
+        fragment: ""
+      };
+    }
+
+    var value = hash.slice(2);
+    var fragmentIndex = value.indexOf("#");
+    var path = fragmentIndex === -1 ? value : value.slice(0, fragmentIndex);
+    var fragment = fragmentIndex === -1 ? "" : value.slice(fragmentIndex);
+
+    try {
+      path = decodeURI(path);
+    } catch (error) {
+      return {
+        path: "index.html",
+        fragment: ""
+      };
+    }
+
+    if (!isSafeZipPath(path)) {
+      return {
+        path: "index.html",
+        fragment: ""
+      };
+    }
+    return {
+      path: path,
+      fragment: fragment
+    };
+  }
+
+  function getReportUrlFromHash(basePath) {
+    var target = getHashReportPath();
+    return basePath + "__report__/" + target.path + target.fragment;
+  }
+
+  function getHashFromReportUrl(url, basePath) {
+    if (url.origin !== window.location.origin || !url.pathname.startsWith(basePath + "__report__/")) {
+      return null;
+    }
+
+    var path = url.pathname.slice((basePath + "__report__/").length);
+    if (!isSafeZipPath(path)) {
+      return null;
+    }
+    return "#/" + path + url.hash;
+  }
+
+  function navigateToHashReport() {
+    if (!reportBasePath) {
+      return;
+    }
+    var target = getReportUrlFromHash(reportBasePath);
+    var current = reportFrame.contentWindow ? reportFrame.contentWindow.location.pathname + reportFrame.contentWindow.location.hash : "";
+    if (current !== target) {
+      reportFrame.src = target;
+    }
   }
 
   function contentTypeFor(path) {
@@ -183,6 +329,7 @@
     var name = getReportName();
     var basePath = getBasePath();
     var artifactUrl = getArtifactUrl(name);
+    reportBasePath = basePath;
 
     try {
       await registerServiceWorker();
@@ -218,7 +365,29 @@
     reportFrame.addEventListener("load", function () {
       statusPanel.hidden = true;
     }, { once: true });
-    reportFrame.src = basePath + "__report__/index.html";
+    reportFrame.addEventListener("load", function () {
+      var reportHash;
+      try {
+        reportHash = getHashFromReportUrl(new URL(reportFrame.contentWindow.location.href), basePath);
+      } catch (error) {
+        return;
+      }
+
+      if (reportHash && window.location.hash !== reportHash) {
+        hashChangeFromFrame = true;
+        window.location.hash = reportHash;
+      }
+    });
+
+    window.addEventListener("hashchange", function () {
+      if (hashChangeFromFrame) {
+        hashChangeFromFrame = false;
+        return;
+      }
+      navigateToHashReport();
+    });
+
+    reportFrame.src = getReportUrlFromHash(basePath);
   }
 
   load();
