@@ -304,20 +304,19 @@ jobs:
           reduced_ci_mode: auto
           image_version: ${{ needs.prepare.outputs.image_version }}
           groups: |
-            groups:
-              external:
-                config: .github/config/external_extensions.cmake
-                default_exclude_archs: wasm_mvp;wasm_eh;wasm_threads;windows_amd64_mingw;windows_amd64;linux_amd64_musl
-                toolchain: main
-              main:
-                config:
-                  - .github/config/in_tree_extensions.cmake
-                  - .github/config/out_of_tree_extensions.cmake
-                toolchain: main
-              rust:
-                config: .github/config/rust_based_extensions.cmake
-                default_exclude_archs: wasm_mvp;wasm_eh;wasm_threads;windows_amd64_rtools;windows_amd64_mingw;linux_amd64_musl
-                toolchain: rust
+            external:
+              config: .github/config/external_extensions.cmake
+              default_exclude_archs: wasm_mvp;wasm_eh;wasm_threads;windows_amd64_mingw;windows_amd64;linux_amd64_musl
+              toolchain: main
+            main:
+              config:
+                - .github/config/in_tree_extensions.cmake
+                - .github/config/out_of_tree_extensions.cmake
+              toolchain: main
+            rust:
+              config: .github/config/rust_based_extensions.cmake
+              default_exclude_archs: wasm_mvp;wasm_eh;wasm_threads;windows_amd64_rtools;windows_amd64_mingw;linux_amd64_musl
+              toolchain: rust
 
       - name: Validate matrix outputs
         shell: bash

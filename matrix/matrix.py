@@ -173,7 +173,6 @@ def parse_groups(raw: str | None) -> tuple[ExtensionGroup, ...]:
     groups: dict[str, dict[str, Any]] = {}
     current_group: str | None = None
     current_list_field: str | None = None
-    saw_root = False
 
     for line_number, raw_line in enumerate(raw.splitlines(), start=1):
         if not raw_line.strip():
@@ -184,16 +183,6 @@ def parse_groups(raw: str | None) -> tuple[ExtensionGroup, ...]:
         line = raw_line.strip()
 
         if indent == 0:
-            if line != "groups:":
-                raise MatrixError(f"groups line {line_number}: expected 'groups:'")
-            if saw_root:
-                raise MatrixError("groups root is duplicated")
-            saw_root = True
-            continue
-        if not saw_root:
-            raise MatrixError(f"groups line {line_number}: expected 'groups:' before group entries")
-
-        if indent == 2:
             if not line.endswith(":") or line == ":":
                 raise MatrixError(f"groups line {line_number}: expected group mapping")
             current_group = line[:-1].strip()
@@ -208,7 +197,7 @@ def parse_groups(raw: str | None) -> tuple[ExtensionGroup, ...]:
         if current_group is None:
             raise MatrixError(f"groups line {line_number}: field without group")
 
-        if indent == 4:
+        if indent == 2:
             if ":" not in line:
                 raise MatrixError(f"groups line {line_number}: expected field mapping")
             field, value = line.split(":", 1)
@@ -228,7 +217,7 @@ def parse_groups(raw: str | None) -> tuple[ExtensionGroup, ...]:
                 current_list_field = field
             continue
 
-        if indent == 6 and current_list_field:
+        if indent == 4 and current_list_field:
             if not line.startswith("- "):
                 raise MatrixError(f"groups line {line_number}: expected list item")
             groups[current_group][current_list_field].append(_parse_yaml_scalar(line[2:].strip()))
@@ -236,8 +225,6 @@ def parse_groups(raw: str | None) -> tuple[ExtensionGroup, ...]:
 
         raise MatrixError(f"groups line {line_number}: unsupported indentation")
 
-    if not saw_root:
-        raise MatrixError("groups input must start with 'groups:'")
     if not groups:
         raise MatrixError("groups mapping cannot be empty")
 

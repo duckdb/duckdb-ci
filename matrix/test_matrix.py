@@ -20,20 +20,19 @@ from matrix.main import main as matrix_main
 
 ROOT = Path(__file__).resolve().parents[1]
 
-DUCKDB_CORE_GROUPS = """groups:
-  external:
-    config: .github/config/external_extensions.cmake
-    default_exclude_archs: wasm_mvp;wasm_eh;wasm_threads;windows_amd64_mingw;windows_amd64;linux_amd64_musl
-    toolchain: main
-  main:
-    config:
-      - .github/config/in_tree_extensions.cmake
-      - .github/config/out_of_tree_extensions.cmake
-    toolchain: main
-  rust:
-    config: .github/config/rust_based_extensions.cmake
-    default_exclude_archs: wasm_mvp;wasm_eh;wasm_threads;windows_amd64_rtools;windows_amd64_mingw;linux_amd64_musl
-    toolchain: rust
+DUCKDB_CORE_GROUPS = """external:
+  config: .github/config/external_extensions.cmake
+  default_exclude_archs: wasm_mvp;wasm_eh;wasm_threads;windows_amd64_mingw;windows_amd64;linux_amd64_musl
+  toolchain: main
+main:
+  config:
+    - .github/config/in_tree_extensions.cmake
+    - .github/config/out_of_tree_extensions.cmake
+  toolchain: main
+rust:
+  config: .github/config/rust_based_extensions.cmake
+  default_exclude_archs: wasm_mvp;wasm_eh;wasm_threads;windows_amd64_rtools;windows_amd64_mingw;linux_amd64_musl
+  toolchain: rust
 """
 
 
@@ -131,11 +130,10 @@ def test_default_groups_parse_in_sorted_order():
 
 def test_group_yaml_parser_accepts_scalar_config_and_rejects_unknown_fields():
     groups = parse_groups(
-        """groups:
-  custom:
-    config: custom.cmake
-    opt_in_archs: linux_amd64
-    toolchain: main
+        """custom:
+  config: custom.cmake
+  opt_in_archs: linux_amd64
+  toolchain: main
 """
     )
 
@@ -145,11 +143,10 @@ def test_group_yaml_parser_accepts_scalar_config_and_rejects_unknown_fields():
 
     with pytest.raises(MatrixError):
         parse_groups(
-            """groups:
-  custom:
-    config: custom.cmake
-    unknown: value
-    toolchain: main
+            """custom:
+  config: custom.cmake
+  unknown: value
+  toolchain: main
 """
         )
 
@@ -385,4 +382,3 @@ def test_detect_event_type_from_file(tmp_path):
     assert detect_event_type_from_file(pull_request) == "pull_request"
     assert detect_event_type_from_file(push) == "push"
     assert detect_event_type_from_file(unknown) == "unknown"
-
