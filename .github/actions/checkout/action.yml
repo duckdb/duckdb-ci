@@ -39,6 +39,7 @@ runs:
       with:
         fetch-depth: ${{ inputs.fetch_depth }}
         path: ${{ inputs.path }}
+        persist-credentials: false
         repository: ${{ inputs.repository }}
         ref: ${{ inputs.ref }}
       env:
