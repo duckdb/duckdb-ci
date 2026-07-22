@@ -1,0 +1,21 @@
+# Example configuration for the DuckDB benchmark harness.
+# Run with: python3 run_benchmark.py --config config.yaml
+
+# Path to the DuckDB CLI executable (the build under test).
+duckdb_binary: /path/to/duckdb
+
+# DuckDB database file the binary opens; queries run against its loaded tables.
+data: /path/to/data.db
+
+# Directory of benchmark queries, one statement per qNN.sql file.
+queries: /path/to/queries
+
+# Directory of expected answers, one qNN.csv per query (pipe-delimited, with header).
+answers: /path/to/answers
+
+# Output CSV: written only if every query runs and validates successfully.
+# Columns: query,time_seconds
+results: /path/to/results.csv
+
+# Optional: per-query timeout in seconds (default: 600).
+timeout: 600
