@@ -27,18 +27,30 @@ inputs:
     required: true
 
 outputs:
-  linux:
-    description: "Linux job matrix"
-    value: ${{ steps.matrix.outputs.linux }}
-  macos:
-    description: "macOS job matrix"
-    value: ${{ steps.matrix.outputs.macos }}
-  windows:
-    description: "Windows job matrix"
-    value: ${{ steps.matrix.outputs.windows }}
-  wasm:
-    description: "Wasm job matrix"
-    value: ${{ steps.matrix.outputs.wasm }}
+  build_linux:
+    description: "Linux build job matrix"
+    value: ${{ steps.matrix.outputs.build_linux }}
+  test_linux:
+    description: "Linux test job matrix"
+    value: ${{ steps.matrix.outputs.test_linux }}
+  build_macos:
+    description: "macOS build job matrix"
+    value: ${{ steps.matrix.outputs.build_macos }}
+  test_macos:
+    description: "macOS test job matrix"
+    value: ${{ steps.matrix.outputs.test_macos }}
+  build_windows:
+    description: "Windows build job matrix"
+    value: ${{ steps.matrix.outputs.build_windows }}
+  test_windows:
+    description: "Windows test job matrix"
+    value: ${{ steps.matrix.outputs.test_windows }}
+  build_wasm:
+    description: "Wasm build job matrix"
+    value: ${{ steps.matrix.outputs.build_wasm }}
+  test_wasm:
+    description: "Wasm test job matrix"
+    value: ${{ steps.matrix.outputs.test_wasm }}
 
 runs:
   using: "composite"

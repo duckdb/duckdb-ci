@@ -8,6 +8,11 @@ from typing import Any
 
 
 OUTPUT_PLATFORMS = ("linux", "macos", "windows", "wasm")
+OUTPUT_KEYS = tuple(
+    f"{job_type}_{platform}"
+    for platform in OUTPUT_PLATFORMS
+    for job_type in ("build", "test")
+)
 PLATFORM_CONFIG_KEYS = {
     "linux": "linux",
     "macos": "osx",
@@ -341,12 +346,14 @@ def build_job(
     extension_config: str,
     image_version: str,
 ) -> dict[str, Any]:
+    artifact_prefix = f"{group.key}-extensions"
     job: dict[str, Any] = {
         "runner": runner,
         "vcpkg_target_triplet": entry["vcpkg_target_triplet"],
         "vcpkg_host_triplet": entry["vcpkg_host_triplet"],
         "duckdb_arch": entry["duckdb_arch"],
-        "artifact_prefix": f"{group.key}-extensions",
+        "artifact_prefix": artifact_prefix,
+        "artifact_name": f"{artifact_prefix}-{entry['duckdb_arch']}",
         "exclude_archs": effective_exclude_archs,
         "opt_in_archs": effective_opt_in_archs,
         "extension_config": extension_config,
@@ -355,6 +362,27 @@ def build_job(
         job["osx_build_arch"] = entry["osx_build_arch"]
     if entry["duckdb_arch"].startswith("linux_"):
         container_name = linux_container_name(entry["duckdb_arch"], group.toolchain)
+        job["container_name"] = container_name
+        if image_version:
+            job["container"] = f"ghcr.io/duckdb/duckdb-ci/{container_name}:{image_version}"
+    return job
+
+
+def test_job(
+    entry: dict[str, Any],
+    runner: list[str],
+    image_version: str,
+) -> dict[str, Any]:
+    duckdb_arch = entry["duckdb_arch"]
+    job: dict[str, Any] = {
+        "runner": runner,
+        "duckdb_arch": duckdb_arch,
+        "artifact_pattern": f"*-extensions-{duckdb_arch}",
+    }
+    if "osx_build_arch" in entry:
+        job["osx_build_arch"] = entry["osx_build_arch"]
+    if duckdb_arch.startswith("linux_"):
+        container_name = linux_container_name(duckdb_arch, "main")
         job["container_name"] = container_name
         if image_version:
             job["container"] = f"ghcr.io/duckdb/duckdb-ci/{container_name}:{image_version}"
@@ -377,12 +405,14 @@ def compute_matrices(
     extension_groups = parse_groups(groups)
 
     result: dict[str, dict[str, list[dict[str, Any]]]] = {
-        output_platform: {"include": []} for output_platform in OUTPUT_PLATFORMS
+        output_key: {"include": []} for output_key in OUTPUT_KEYS
     }
     for output_platform, config_key in PLATFORM_CONFIG_KEYS.items():
         if config_key not in extensions:
             raise MatrixError(f"missing platform in extensions.json: {config_key}")
         entries = extensions[config_key]["include"]
+        build_output = result[f"build_{output_platform}"]["include"]
+        test_entries: dict[str, tuple[dict[str, Any], list[str]]] = {}
         for group in extension_groups:
             effective_exclude_archs = combine_lists(group.default_exclude_archs, exclude_archs)
             if group.opt_in_archs is not None:
@@ -397,26 +427,35 @@ def compute_matrices(
             for entry in entries:
                 if not include_entry(entry, excluded, opt_in, reduced_ci):
                     continue
-                result[output_platform]["include"].append(
+                runner = resolve_runner(entry, runner_overrides)
+                build_output.append(
                     build_job(
                         entry,
                         group,
-                        resolve_runner(entry, runner_overrides),
+                        runner,
                         effective_exclude_archs,
                         effective_opt_in_archs,
                         extension_config,
                         image_version,
                     )
                 )
-        result[output_platform]["include"].sort(
+                test_entries.setdefault(entry["duckdb_arch"], (entry, runner))
+        build_output.sort(
             key=lambda job: (job["duckdb_arch"], job["artifact_prefix"])
+        )
+        result[f"test_{output_platform}"]["include"] = [
+            test_job(entry, runner, image_version)
+            for entry, runner in test_entries.values()
+        ]
+        result[f"test_{output_platform}"]["include"].sort(
+            key=lambda job: job["duckdb_arch"]
         )
     return result
 
 
 def render_github_output(matrices: dict[str, dict[str, list[dict[str, Any]]]]) -> str:
     lines = []
-    for key in OUTPUT_PLATFORMS:
+    for key in OUTPUT_KEYS:
         payload = json.dumps(matrices[key], separators=(",", ":"), sort_keys=True)
         lines.append(f"{key}={payload}")
     return "\n".join(lines) + "\n"
@@ -424,11 +463,11 @@ def render_github_output(matrices: dict[str, dict[str, list[dict[str, Any]]]]) -
 
 def render_readable_matrix_log(matrices: dict[str, dict[str, list[dict[str, Any]]]]) -> str:
     lines: list[str] = []
-    for platform in OUTPUT_PLATFORMS:
+    for output_key in OUTPUT_KEYS:
         if lines:
             lines.append("")
-        jobs = matrices[platform]["include"]
-        lines.append(f"{platform} ({len(jobs)} {'job' if len(jobs) == 1 else 'jobs'})")
+        jobs = matrices[output_key]["include"]
+        lines.append(f"{output_key} ({len(jobs)} {'job' if len(jobs) == 1 else 'jobs'})")
         if not jobs:
             lines.append("  No jobs")
             continue
@@ -436,12 +475,31 @@ def render_readable_matrix_log(matrices: dict[str, dict[str, list[dict[str, Any]
         columns = [
             ("#", lambda index, job: str(index)),
             ("duckdb_arch", lambda index, job: _display_value(job.get("duckdb_arch"))),
-            ("artifact_prefix", lambda index, job: _display_value(job.get("artifact_prefix"))),
             ("runner", lambda index, job: _display_value(job.get("runner"))),
-            ("vcpkg_target_triplet", lambda index, job: _display_value(job.get("vcpkg_target_triplet"))),
-            ("vcpkg_host_triplet", lambda index, job: _display_value(job.get("vcpkg_host_triplet"))),
-            ("container_name", lambda index, job: _display_value(job.get("container_name"))),
         ]
+        if output_key.startswith("build_"):
+            columns.extend(
+                [
+                    ("artifact_prefix", lambda index, job: _display_value(job.get("artifact_prefix"))),
+                    ("artifact_name", lambda index, job: _display_value(job.get("artifact_name"))),
+                    (
+                        "vcpkg_target_triplet",
+                        lambda index, job: _display_value(job.get("vcpkg_target_triplet")),
+                    ),
+                    (
+                        "vcpkg_host_triplet",
+                        lambda index, job: _display_value(job.get("vcpkg_host_triplet")),
+                    ),
+                ]
+            )
+        else:
+            columns.append(
+                ("artifact_pattern", lambda index, job: _display_value(job.get("artifact_pattern")))
+            )
+        if any(job.get("container_name") for job in jobs):
+            columns.append(
+                ("container_name", lambda index, job: _display_value(job.get("container_name")))
+            )
         if any(job.get("osx_build_arch") for job in jobs):
             columns.append(("osx_build_arch", lambda index, job: _display_value(job.get("osx_build_arch"))))
 
@@ -465,9 +523,10 @@ def render_readable_matrix_log(matrices: dict[str, dict[str, list[dict[str, Any]
         lines.append("  Details")
         for index, job in enumerate(jobs, start=1):
             lines.append(f"  Job {index}:")
-            _append_detail(lines, "extension_config", job.get("extension_config"), indent="    ")
-            _append_detail(lines, "exclude_archs", job.get("exclude_archs"), indent="    ")
-            _append_detail(lines, "opt_in_archs", job.get("opt_in_archs"), indent="    ")
+            if output_key.startswith("build_"):
+                _append_detail(lines, "extension_config", job.get("extension_config"), indent="    ")
+                _append_detail(lines, "exclude_archs", job.get("exclude_archs"), indent="    ")
+                _append_detail(lines, "opt_in_archs", job.get("opt_in_archs"), indent="    ")
             _append_detail(lines, "container", job.get("container"), indent="    ")
     return "\n".join(lines) + "\n"
 

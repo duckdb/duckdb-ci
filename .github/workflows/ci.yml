@@ -321,13 +321,21 @@ jobs:
       - name: Validate matrix outputs
         shell: bash
         env:
-          LINUX: ${{ steps.matrix.outputs.linux }}
-          MACOS: ${{ steps.matrix.outputs.macos }}
-          WINDOWS: ${{ steps.matrix.outputs.windows }}
-          WASM: ${{ steps.matrix.outputs.wasm }}
+          BUILD_LINUX: ${{ steps.matrix.outputs.build_linux }}
+          TEST_LINUX: ${{ steps.matrix.outputs.test_linux }}
+          BUILD_MACOS: ${{ steps.matrix.outputs.build_macos }}
+          TEST_MACOS: ${{ steps.matrix.outputs.test_macos }}
+          BUILD_WINDOWS: ${{ steps.matrix.outputs.build_windows }}
+          TEST_WINDOWS: ${{ steps.matrix.outputs.test_windows }}
+          BUILD_WASM: ${{ steps.matrix.outputs.build_wasm }}
+          TEST_WASM: ${{ steps.matrix.outputs.test_wasm }}
         run: |
           set -euo pipefail
-          for output in "$LINUX" "$MACOS" "$WINDOWS" "$WASM"; do
+          for output in \
+            "$BUILD_LINUX" "$TEST_LINUX" \
+            "$BUILD_MACOS" "$TEST_MACOS" \
+            "$BUILD_WINDOWS" "$TEST_WINDOWS" \
+            "$BUILD_WASM" "$TEST_WASM"; do
             jq -e '.include | type == "array"' <<<"$output" >/dev/null
           done
 
