@@ -315,6 +315,7 @@ jobs:
               config:
                 - .github/config/in_tree_extensions.cmake
                 - .github/config/out_of_tree_extensions.cmake
+              opt_in_archs: linux_amd64_musl;linux_arm64_musl
               toolchain: main
             rust:
               config: .github/config/rust_based_extensions.cmake
