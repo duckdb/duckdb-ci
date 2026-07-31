@@ -1,21 +1,38 @@
 # Example configuration for the DuckDB benchmark harness.
 # Run with: python3 run_benchmark.py --config config.yaml
 
-# Path to the DuckDB CLI executable (the build under test).
-duckdb_binary: /path/to/duckdb
+# Recorded as a column in the results CSV to identify this run.
+benchmark_name: my_first_benchmark
 
-# DuckDB database file the binary opens; queries run against its loaded tables.
-data: /path/to/data.db
+# The DuckDB CLI used to run the queries. Two forms are accepted:
+#   - a path to an existing CLI executable (e.g. a local build), used as-is, or
+#   - a pinned release version such as v1.5.5, installed once via the official DuckDB
+#     install script and cached at ~/.duckdb/cli/<version>/duckdb (floating refs like
+#     "latest" are not accepted).
+duckdb_binary: v1.5.5
+# Storage the queries run against. Two types are supported:
+#   type: duckdb    -> path is a DuckDB database file, opened directly.
+#   type: ducklake  -> path is a DuckLake target (a local .ducklake metadata file or a
+#                      connection string such as postgres:...), attached before queries.
+storage:
+  type: duckdb
+  path: benchmark/tpcds-sf001.duckdb
 
 # Directory of benchmark queries, one statement per qNN.sql file.
-queries: /path/to/queries
+queries: benchmark/queries
 
 # Directory of expected answers, one qNN.csv per query (pipe-delimited, with header).
-answers: /path/to/answers
+answers: benchmark/answers
 
-# Output CSV: written only if every query runs and validates successfully.
-# Columns: query,time_seconds
-results: /path/to/results.csv
+# Output CSV. Each query runs 10 times; a query that fails (wrong result, timeout, or
+# error) is recorded with status=failed and skipped, and the run continues. Columns:
+#   benchmark_name,query,status,error,median_seconds,run_1_seconds,...,run_10_seconds
+results: benchmark/results.csv
 
 # Optional: per-query timeout in seconds (default: 600).
 timeout: 600
+
+# Optional: DuckDB settings applied via the CLI before each query runs.
+# Omit either to leave DuckDB at its default.
+threads: 4              # SET threads = 4;
+memory_limit: 4GB       # SET memory_limit = '4GB';
