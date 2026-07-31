@@ -2,18 +2,15 @@ from __future__ import annotations
 
 import json
 import os
-from dataclasses import dataclass
+from collections.abc import Callable, Iterator, Mapping
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Generic, Literal, Protocol, TypeVar
 
 
-OUTPUT_PLATFORMS = ("linux", "macos", "windows", "wasm")
-OUTPUT_KEYS = tuple(
-    f"{job_type}_{platform}"
-    for platform in OUTPUT_PLATFORMS
-    for job_type in ("build", "test")
-)
-PLATFORM_CONFIG_KEYS = {
+Platform = Literal["linux", "macos", "windows", "wasm"]
+OUTPUT_PLATFORMS: tuple[Platform, ...] = ("linux", "macos", "windows", "wasm")
+PLATFORM_CONFIG_KEYS: dict[Platform, str] = {
     "linux": "linux",
     "macos": "osx",
     "windows": "windows",
@@ -25,13 +22,147 @@ PUSH = "push"
 UNKNOWN = "unknown"
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class ExtensionGroup:
     key: str
     toolchain: str
     default_exclude_archs: str
     opt_in_archs: str | None
     config_paths: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class BuildJob:
+    runner: list[str]
+    vcpkg_target_triplet: str
+    vcpkg_host_triplet: str
+    duckdb_arch: str
+    prefix: str
+    artifact_name: str
+    exclude_archs: str
+    opt_in_archs: str
+    extension_config: str
+    osx_build_arch: str | None = None
+    container_name: str | None = None
+    container: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        result: dict[str, Any] = {
+            "runner": self.runner,
+            "vcpkg_target_triplet": self.vcpkg_target_triplet,
+            "vcpkg_host_triplet": self.vcpkg_host_triplet,
+            "duckdb_arch": self.duckdb_arch,
+            "artifact_prefix": self.prefix,
+            "artifact_name": self.artifact_name,
+            "exclude_archs": self.exclude_archs,
+            "opt_in_archs": self.opt_in_archs,
+            "extension_config": self.extension_config,
+        }
+        if self.osx_build_arch is not None:
+            result["osx_build_arch"] = self.osx_build_arch
+        if self.container_name is not None:
+            result["container_name"] = self.container_name
+        if self.container is not None:
+            result["container"] = self.container
+        return result
+
+
+@dataclass(frozen=True, slots=True)
+class TestJob:
+    runner: list[str]
+    duckdb_arch: str
+    artifact_pattern: str
+    osx_build_arch: str | None = None
+    container_name: str | None = None
+    container: str | None = None
+
+    @property
+    def prefix(self) -> None:
+        return None
+
+    def to_dict(self) -> dict[str, Any]:
+        result: dict[str, Any] = {
+            "runner": self.runner,
+            "duckdb_arch": self.duckdb_arch,
+            "artifact_pattern": self.artifact_pattern,
+        }
+        if self.osx_build_arch is not None:
+            result["osx_build_arch"] = self.osx_build_arch
+        if self.container_name is not None:
+            result["container_name"] = self.container_name
+        if self.container is not None:
+            result["container"] = self.container
+        return result
+
+
+class SerializableJob(Protocol):
+    @property
+    def duckdb_arch(self) -> str: ...
+
+    @property
+    def prefix(self) -> str | None: ...
+
+    def to_dict(self) -> dict[str, Any]: ...
+
+
+JobT = TypeVar("JobT", bound=SerializableJob)
+
+
+@dataclass(slots=True)
+class JobMatrix(Generic[JobT]):
+    includes: list[JobT] = field(default_factory=list)
+
+    @property
+    def archs(self) -> list[str]:
+        return [job.duckdb_arch for job in self.includes]
+
+    def get(self, *, arch: str, prefix: str | None = None) -> JobT:
+        matches = [
+            job
+            for job in self.includes
+            if job.duckdb_arch == arch and (prefix is None or job.prefix == prefix)
+        ]
+        if len(matches) != 1:
+            criteria = f"arch={arch!r}"
+            if prefix is not None:
+                criteria += f", prefix={prefix!r}"
+            raise MatrixError(
+                f"expected exactly one matrix job matching {criteria}; found {len(matches)}"
+            )
+        return matches[0]
+
+    def to_dict(self) -> dict[str, list[dict[str, Any]]]:
+        return {"include": [job.to_dict() for job in self.includes]}
+
+
+@dataclass(slots=True)
+class PlatformMatrices(Generic[JobT]):
+    linux: JobMatrix[JobT] = field(default_factory=JobMatrix)
+    macos: JobMatrix[JobT] = field(default_factory=JobMatrix)
+    windows: JobMatrix[JobT] = field(default_factory=JobMatrix)
+    wasm: JobMatrix[JobT] = field(default_factory=JobMatrix)
+
+    def for_platform(self, platform: Platform) -> JobMatrix[JobT]:
+        if platform == "linux":
+            return self.linux
+        if platform == "macos":
+            return self.macos
+        if platform == "windows":
+            return self.windows
+        return self.wasm
+
+
+@dataclass(slots=True)
+class Matrices:
+    build: PlatformMatrices[BuildJob] = field(default_factory=PlatformMatrices)
+    test: PlatformMatrices[TestJob] = field(default_factory=PlatformMatrices)
+
+    def outputs(
+        self,
+    ) -> Iterator[tuple[str, JobMatrix[BuildJob] | JobMatrix[TestJob]]]:
+        for platform in OUTPUT_PLATFORMS:
+            yield f"build_{platform}", self.build.for_platform(platform)
+            yield f"test_{platform}", self.test.for_platform(platform)
 
 
 class MatrixError(ValueError):
@@ -68,9 +199,9 @@ def combine_lists(*raw_values: str | None) -> str:
     return join_list(combined)
 
 
-def detect_event_type_from_env(env: dict[str, str] | None = None) -> str:
-    env = env or os.environ
-    event_path = env.get("GITHUB_EVENT_PATH", "")
+def detect_event_type_from_env(env: Mapping[str, str] | None = None) -> str:
+    resolved_env = os.environ if env is None else env
+    event_path = resolved_env.get("GITHUB_EVENT_PATH", "")
     if not event_path:
         return UNKNOWN
     return detect_event_type_from_file(Path(event_path))
@@ -107,7 +238,8 @@ def load_extensions_config(path: Path) -> dict[str, Any]:
     for platform, config in data.items():
         if not isinstance(config, dict):
             raise MatrixError(f"platform {platform!r} must be an object")
-        unknown_config_fields = set(config) - {"include"}
+        config_fields = {str(key) for key in config}
+        unknown_config_fields = config_fields - {"include"}
         if unknown_config_fields:
             fields = ", ".join(sorted(unknown_config_fields))
             raise MatrixError(f"platform {platform!r} has unknown fields: {fields}")
@@ -131,11 +263,12 @@ def validate_entry(platform: str, entry: Any) -> None:
         "opt_in",
     }
     allowed = required | {"osx_build_arch"}
-    unknown = set(entry) - allowed
+    entry_fields = {str(key) for key in entry}
+    unknown = entry_fields - allowed
     if unknown:
         fields = ", ".join(sorted(unknown))
         raise MatrixError(f"entry {entry.get('duckdb_arch', '<unknown>')!r} has unknown fields: {fields}")
-    missing = required - set(entry)
+    missing = required - entry_fields
     if missing:
         fields = ", ".join(sorted(missing))
         raise MatrixError(f"entry {entry.get('duckdb_arch', '<unknown>')!r} is missing fields: {fields}")
@@ -345,48 +478,53 @@ def build_job(
     effective_opt_in_archs: str,
     extension_config: str,
     image_version: str,
-) -> dict[str, Any]:
-    artifact_prefix = f"{group.key}-extensions"
-    job: dict[str, Any] = {
-        "runner": runner,
-        "vcpkg_target_triplet": entry["vcpkg_target_triplet"],
-        "vcpkg_host_triplet": entry["vcpkg_host_triplet"],
-        "duckdb_arch": entry["duckdb_arch"],
-        "artifact_prefix": artifact_prefix,
-        "artifact_name": f"{artifact_prefix}-{entry['duckdb_arch']}",
-        "exclude_archs": effective_exclude_archs,
-        "opt_in_archs": effective_opt_in_archs,
-        "extension_config": extension_config,
-    }
-    if "osx_build_arch" in entry:
-        job["osx_build_arch"] = entry["osx_build_arch"]
-    if entry["duckdb_arch"].startswith("linux_"):
-        container_name = linux_container_name(entry["duckdb_arch"], group.toolchain)
-        job["container_name"] = container_name
+) -> BuildJob:
+    duckdb_arch = str(entry["duckdb_arch"])
+    prefix = f"{group.key}-extensions"
+    osx_build_arch = str(entry["osx_build_arch"]) if "osx_build_arch" in entry else None
+    container_name: str | None = None
+    container: str | None = None
+    if duckdb_arch.startswith("linux_"):
+        container_name = linux_container_name(duckdb_arch, group.toolchain)
         if image_version:
-            job["container"] = f"ghcr.io/duckdb/duckdb-ci/{container_name}:{image_version}"
-    return job
+            container = f"ghcr.io/duckdb/duckdb-ci/{container_name}:{image_version}"
+    return BuildJob(
+        runner=runner,
+        vcpkg_target_triplet=str(entry["vcpkg_target_triplet"]),
+        vcpkg_host_triplet=str(entry["vcpkg_host_triplet"]),
+        duckdb_arch=duckdb_arch,
+        prefix=prefix,
+        artifact_name=f"{prefix}-{duckdb_arch}",
+        exclude_archs=effective_exclude_archs,
+        opt_in_archs=effective_opt_in_archs,
+        extension_config=extension_config,
+        osx_build_arch=osx_build_arch,
+        container_name=container_name,
+        container=container,
+    )
 
 
 def test_job(
     entry: dict[str, Any],
     runner: list[str],
     image_version: str,
-) -> dict[str, Any]:
-    duckdb_arch = entry["duckdb_arch"]
-    job: dict[str, Any] = {
-        "runner": runner,
-        "duckdb_arch": duckdb_arch,
-        "artifact_pattern": f"*-extensions-{duckdb_arch}",
-    }
-    if "osx_build_arch" in entry:
-        job["osx_build_arch"] = entry["osx_build_arch"]
+) -> TestJob:
+    duckdb_arch = str(entry["duckdb_arch"])
+    osx_build_arch = str(entry["osx_build_arch"]) if "osx_build_arch" in entry else None
+    container_name: str | None = None
+    container: str | None = None
     if duckdb_arch.startswith("linux_"):
         container_name = linux_container_name(duckdb_arch, "main")
-        job["container_name"] = container_name
         if image_version:
-            job["container"] = f"ghcr.io/duckdb/duckdb-ci/{container_name}:{image_version}"
-    return job
+            container = f"ghcr.io/duckdb/duckdb-ci/{container_name}:{image_version}"
+    return TestJob(
+        runner=runner,
+        duckdb_arch=duckdb_arch,
+        artifact_pattern=f"*-extensions-{duckdb_arch}",
+        osx_build_arch=osx_build_arch,
+        container_name=container_name,
+        container=container,
+    )
 
 
 def compute_matrices(
@@ -399,19 +537,17 @@ def compute_matrices(
     event_type: str = UNKNOWN,
     image_version: str = "",
     groups: str | None = None,
-) -> dict[str, dict[str, list[dict[str, Any]]]]:
+) -> Matrices:
     reduced_ci = resolve_reduced_ci_mode(reduced_ci_mode, event_type)
     runner_overrides = parse_runners(runners)
     extension_groups = parse_groups(groups)
 
-    result: dict[str, dict[str, list[dict[str, Any]]]] = {
-        output_key: {"include": []} for output_key in OUTPUT_KEYS
-    }
+    result = Matrices()
     for output_platform, config_key in PLATFORM_CONFIG_KEYS.items():
         if config_key not in extensions:
             raise MatrixError(f"missing platform in extensions.json: {config_key}")
         entries = extensions[config_key]["include"]
-        build_output = result[f"build_{output_platform}"]["include"]
+        build_output = result.build.for_platform(output_platform).includes
         test_entries: dict[str, tuple[dict[str, Any], list[str]]] = {}
         for group in extension_groups:
             effective_exclude_archs = combine_lists(group.default_exclude_archs, exclude_archs)
@@ -439,96 +575,139 @@ def compute_matrices(
                         image_version,
                     )
                 )
-                test_entries.setdefault(entry["duckdb_arch"], (entry, runner))
+                test_entries.setdefault(str(entry["duckdb_arch"]), (entry, runner))
         build_output.sort(
-            key=lambda job: (job["duckdb_arch"], job["artifact_prefix"])
+            key=lambda job: (job.duckdb_arch, job.prefix)
         )
-        result[f"test_{output_platform}"]["include"] = [
+        test_output = result.test.for_platform(output_platform).includes
+        test_output.extend(
             test_job(entry, runner, image_version)
             for entry, runner in test_entries.values()
-        ]
-        result[f"test_{output_platform}"]["include"].sort(
-            key=lambda job: job["duckdb_arch"]
         )
+        test_output.sort(key=lambda job: job.duckdb_arch)
     return result
 
 
-def render_github_output(matrices: dict[str, dict[str, list[dict[str, Any]]]]) -> str:
+def render_github_output(matrices: Matrices) -> str:
     lines = []
-    for key in OUTPUT_KEYS:
-        payload = json.dumps(matrices[key], separators=(",", ":"), sort_keys=True)
+    for key, matrix in matrices.outputs():
+        payload = json.dumps(matrix.to_dict(), separators=(",", ":"), sort_keys=True)
         lines.append(f"{key}={payload}")
     return "\n".join(lines) + "\n"
 
 
-def render_readable_matrix_log(matrices: dict[str, dict[str, list[dict[str, Any]]]]) -> str:
+RenderJobT = TypeVar("RenderJobT")
+
+
+def render_readable_matrix_log(matrices: Matrices) -> str:
     lines: list[str] = []
-    for output_key in OUTPUT_KEYS:
-        if lines:
-            lines.append("")
-        jobs = matrices[output_key]["include"]
-        lines.append(f"{output_key} ({len(jobs)} {'job' if len(jobs) == 1 else 'jobs'})")
-        if not jobs:
-            lines.append("  No jobs")
-            continue
-
-        columns = [
-            ("#", lambda index, job: str(index)),
-            ("duckdb_arch", lambda index, job: _display_value(job.get("duckdb_arch"))),
-            ("runner", lambda index, job: _display_value(job.get("runner"))),
-        ]
-        if output_key.startswith("build_"):
-            columns.extend(
-                [
-                    ("artifact_prefix", lambda index, job: _display_value(job.get("artifact_prefix"))),
-                    ("artifact_name", lambda index, job: _display_value(job.get("artifact_name"))),
-                    (
-                        "vcpkg_target_triplet",
-                        lambda index, job: _display_value(job.get("vcpkg_target_triplet")),
-                    ),
-                    (
-                        "vcpkg_host_triplet",
-                        lambda index, job: _display_value(job.get("vcpkg_host_triplet")),
-                    ),
-                ]
-            )
-        else:
-            columns.append(
-                ("artifact_pattern", lambda index, job: _display_value(job.get("artifact_pattern")))
-            )
-        if any(job.get("container_name") for job in jobs):
-            columns.append(
-                ("container_name", lambda index, job: _display_value(job.get("container_name")))
-            )
-        if any(job.get("osx_build_arch") for job in jobs):
-            columns.append(("osx_build_arch", lambda index, job: _display_value(job.get("osx_build_arch"))))
-
-        rows = [[formatter(index, job) for _, formatter in columns] for index, job in enumerate(jobs, start=1)]
-        widths = [
-            max(len(header), *(len(row[column_index]) for row in rows))
-            for column_index, (header, _) in enumerate(columns)
-        ]
-        header = "  " + "  ".join(
-            header.ljust(widths[column_index]) for column_index, (header, _) in enumerate(columns)
+    for platform in OUTPUT_PLATFORMS:
+        _append_build_matrix_log(
+            lines,
+            f"build_{platform}",
+            matrices.build.for_platform(platform),
         )
-        separator = "  " + "  ".join("-" * width for width in widths)
-        lines.append(header)
-        lines.append(separator)
-        for row in rows:
-            lines.append(
-                "  " + "  ".join(value.ljust(widths[column_index]) for column_index, value in enumerate(row))
-            )
-
-        lines.append("")
-        lines.append("  Details")
-        for index, job in enumerate(jobs, start=1):
-            lines.append(f"  Job {index}:")
-            if output_key.startswith("build_"):
-                _append_detail(lines, "extension_config", job.get("extension_config"), indent="    ")
-                _append_detail(lines, "exclude_archs", job.get("exclude_archs"), indent="    ")
-                _append_detail(lines, "opt_in_archs", job.get("opt_in_archs"), indent="    ")
-            _append_detail(lines, "container", job.get("container"), indent="    ")
+        _append_test_matrix_log(
+            lines,
+            f"test_{platform}",
+            matrices.test.for_platform(platform),
+        )
     return "\n".join(lines) + "\n"
+
+
+def _append_build_matrix_log(
+    lines: list[str],
+    output_key: str,
+    matrix: JobMatrix[BuildJob],
+) -> None:
+    columns: list[tuple[str, Callable[[BuildJob], Any]]] = [
+        ("duckdb_arch", lambda job: job.duckdb_arch),
+        ("runner", lambda job: job.runner),
+        ("artifact_prefix", lambda job: job.prefix),
+        ("artifact_name", lambda job: job.artifact_name),
+        ("vcpkg_target_triplet", lambda job: job.vcpkg_target_triplet),
+        ("vcpkg_host_triplet", lambda job: job.vcpkg_host_triplet),
+    ]
+    if any(job.container_name for job in matrix.includes):
+        columns.append(("container_name", lambda job: job.container_name))
+    if any(job.osx_build_arch for job in matrix.includes):
+        columns.append(("osx_build_arch", lambda job: job.osx_build_arch))
+
+    def append_details(detail_lines: list[str], job: BuildJob) -> None:
+        _append_detail(detail_lines, "extension_config", job.extension_config, indent="    ")
+        _append_detail(detail_lines, "exclude_archs", job.exclude_archs, indent="    ")
+        _append_detail(detail_lines, "opt_in_archs", job.opt_in_archs, indent="    ")
+        _append_detail(detail_lines, "container", job.container, indent="    ")
+
+    _append_matrix_log(lines, output_key, matrix.includes, columns, append_details)
+
+
+def _append_test_matrix_log(
+    lines: list[str],
+    output_key: str,
+    matrix: JobMatrix[TestJob],
+) -> None:
+    columns: list[tuple[str, Callable[[TestJob], Any]]] = [
+        ("duckdb_arch", lambda job: job.duckdb_arch),
+        ("runner", lambda job: job.runner),
+        ("artifact_pattern", lambda job: job.artifact_pattern),
+    ]
+    if any(job.container_name for job in matrix.includes):
+        columns.append(("container_name", lambda job: job.container_name))
+    if any(job.osx_build_arch for job in matrix.includes):
+        columns.append(("osx_build_arch", lambda job: job.osx_build_arch))
+
+    def append_details(detail_lines: list[str], job: TestJob) -> None:
+        _append_detail(detail_lines, "container", job.container, indent="    ")
+
+    _append_matrix_log(lines, output_key, matrix.includes, columns, append_details)
+
+
+def _append_matrix_log(
+    lines: list[str],
+    output_key: str,
+    jobs: list[RenderJobT],
+    columns: list[tuple[str, Callable[[RenderJobT], Any]]],
+    append_details: Callable[[list[str], RenderJobT], None],
+) -> None:
+    if lines:
+        lines.append("")
+    lines.append(f"{output_key} ({len(jobs)} {'job' if len(jobs) == 1 else 'jobs'})")
+    if not jobs:
+        lines.append("  No jobs")
+        return
+
+    headers = ["#", *(header for header, _ in columns)]
+    rows = [
+        [str(index), *(_display_value(formatter(job)) for _, formatter in columns)]
+        for index, job in enumerate(jobs, start=1)
+    ]
+    widths = [
+        max(len(header), *(len(row[column_index]) for row in rows))
+        for column_index, header in enumerate(headers)
+    ]
+    lines.append(
+        "  "
+        + "  ".join(
+            header.ljust(widths[column_index])
+            for column_index, header in enumerate(headers)
+        )
+    )
+    lines.append("  " + "  ".join("-" * width for width in widths))
+    for row in rows:
+        lines.append(
+            "  "
+            + "  ".join(
+                value.ljust(widths[column_index])
+                for column_index, value in enumerate(row)
+            )
+        )
+
+    lines.append("")
+    lines.append("  Details")
+    for index, job in enumerate(jobs, start=1):
+        lines.append(f"  Job {index}:")
+        append_details(lines, job)
 
 
 def _display_value(value: Any) -> str:
@@ -549,6 +728,6 @@ def _append_detail(lines: list[str], label: str, value: Any, *, indent: str) -> 
         lines.append(f"{indent}  {line}")
 
 
-def write_github_output(output_path: Path, matrices: dict[str, dict[str, list[dict[str, Any]]]]) -> None:
+def write_github_output(output_path: Path, matrices: Matrices) -> None:
     with output_path.open("a", encoding="utf-8") as f:
         f.write(render_github_output(matrices))

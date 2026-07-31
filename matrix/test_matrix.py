@@ -2,11 +2,15 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 import pytest
 
 from matrix.matrix import (
+    BuildJob,
+    Matrices,
     MatrixError,
+    TestJob as MatrixTestJob,
     compute_matrices,
     detect_event_type_from_file,
     load_extensions_config,
@@ -36,37 +40,35 @@ rust:
 """
 
 
-def load_repo_config():
+def load_repo_config() -> dict[str, Any]:
     return load_extensions_config(ROOT / "matrix" / "extensions.json")
 
 
-def compute_core_matrices(*args, **kwargs):
+def compute_core_matrices(*args: Any, **kwargs: Any) -> Matrices:
     kwargs.setdefault("groups", DUCKDB_CORE_GROUPS)
     return compute_matrices(*args, **kwargs)
-
-
-def archs(matrix):
-    return [entry["duckdb_arch"] for entry in matrix["include"]]
-
-
-def build_matrix(matrices, platform):
-    return matrices[f"build_{platform}"]
-
-
-def output_test_matrix(matrices, platform):
-    return matrices[f"test_{platform}"]
-
-
-def by_arch_and_group(matrix, duckdb_arch, artifact_prefix):
-    for entry in matrix["include"]:
-        if entry["duckdb_arch"] == duckdb_arch and entry["artifact_prefix"] == artifact_prefix:
-            return entry
-    raise AssertionError(f"missing {duckdb_arch} {artifact_prefix}")
 
 
 def test_extensions_json_is_valid():
     config = load_repo_config()
     assert set(config) == {"linux", "osx", "windows", "wasm"}
+
+
+def test_matrix_get_requires_exactly_one_match():
+    matrices = compute_core_matrices(load_repo_config(), reduced_ci_mode="enabled")
+
+    with pytest.raises(MatrixError) as ambiguous:
+        matrices.build.linux.get(arch="linux_amd64")
+    assert str(ambiguous.value) == (
+        "expected exactly one matrix job matching arch='linux_amd64'; found 3"
+    )
+
+    with pytest.raises(MatrixError) as missing:
+        matrices.build.linux.get(arch="linux_amd64", prefix="missing-extensions")
+    assert str(missing.value) == (
+        "expected exactly one matrix job matching arch='linux_amd64', "
+        "prefix='missing-extensions'; found 0"
+    )
 
 
 def test_pull_request_auto_enables_reduced_ci(tmp_path):
@@ -76,21 +78,22 @@ def test_pull_request_auto_enables_reduced_ci(tmp_path):
         event_type="pull_request",
     )
 
-    assert archs(build_matrix(matrices, "linux")) == [
+    assert matrices.build.linux.archs == [
         "linux_amd64",
         "linux_amd64",
         "linux_amd64",
     ]
-    assert archs(output_test_matrix(matrices, "linux")) == ["linux_amd64"]
-    assert archs(build_matrix(matrices, "windows")) == ["windows_amd64", "windows_amd64"]
-    assert archs(output_test_matrix(matrices, "windows")) == ["windows_amd64"]
-    assert [
-        entry["artifact_prefix"] for entry in build_matrix(matrices, "windows")["include"]
-    ] == ["main-extensions", "rust-extensions"]
-    assert archs(build_matrix(matrices, "wasm")) == ["wasm_eh"]
-    assert archs(output_test_matrix(matrices, "wasm")) == ["wasm_eh"]
-    assert build_matrix(matrices, "macos")["include"] == []
-    assert output_test_matrix(matrices, "macos")["include"] == []
+    assert matrices.test.linux.archs == ["linux_amd64"]
+    assert matrices.build.windows.archs == ["windows_amd64", "windows_amd64"]
+    assert matrices.test.windows.archs == ["windows_amd64"]
+    assert [job.prefix for job in matrices.build.windows.includes] == [
+        "main-extensions",
+        "rust-extensions",
+    ]
+    assert matrices.build.wasm.archs == ["wasm_eh"]
+    assert matrices.test.wasm.archs == ["wasm_eh"]
+    assert matrices.build.macos.includes == []
+    assert matrices.test.macos.includes == []
 
 
 def test_push_auto_keeps_full_non_opt_in_matrix(tmp_path):
@@ -100,19 +103,19 @@ def test_push_auto_keeps_full_non_opt_in_matrix(tmp_path):
         event_type="push",
     )
 
-    assert "linux_arm64" in archs(build_matrix(matrices, "linux"))
-    assert "osx_amd64" in archs(build_matrix(matrices, "macos"))
-    assert "windows_amd64_mingw" in archs(build_matrix(matrices, "windows"))
-    assert "wasm_threads" in archs(build_matrix(matrices, "wasm"))
-    assert "windows_arm64" not in archs(build_matrix(matrices, "windows"))
+    assert "linux_arm64" in matrices.build.linux.archs
+    assert "osx_amd64" in matrices.build.macos.archs
+    assert "windows_amd64_mingw" in matrices.build.windows.archs
+    assert "wasm_threads" in matrices.build.wasm.archs
+    assert "windows_arm64" not in matrices.build.windows.archs
 
 
 def test_explicit_reduced_ci_modes(tmp_path):
     enabled = compute_core_matrices(load_repo_config(), reduced_ci_mode="enabled", event_type="push")
     disabled = compute_core_matrices(load_repo_config(), reduced_ci_mode="disabled", event_type="pull_request")
 
-    assert "linux_arm64" not in archs(build_matrix(enabled, "linux"))
-    assert "linux_arm64" in archs(build_matrix(disabled, "linux"))
+    assert "linux_arm64" not in enabled.build.linux.archs
+    assert "linux_arm64" in disabled.build.linux.archs
 
 
 def test_exclude_and_opt_in_filters(tmp_path):
@@ -123,10 +126,10 @@ def test_exclude_and_opt_in_filters(tmp_path):
         reduced_ci_mode="disabled",
     )
 
-    assert "linux_amd64" not in archs(build_matrix(matrices, "linux"))
-    assert "linux_amd64_musl" in archs(build_matrix(matrices, "linux"))
-    assert "windows_arm64" in archs(build_matrix(matrices, "windows"))
-    assert "wasm_eh" not in archs(build_matrix(matrices, "wasm"))
+    assert "linux_amd64" not in matrices.build.linux.archs
+    assert "linux_amd64_musl" in matrices.build.linux.archs
+    assert "windows_arm64" in matrices.build.windows.archs
+    assert "wasm_eh" not in matrices.build.wasm.archs
 
 
 def test_split_list_accepts_commas_semicolons_and_deduplicates():
@@ -180,14 +183,14 @@ def test_runner_overrides_accept_strings_and_arrays(tmp_path):
         reduced_ci_mode="disabled",
     )
 
-    assert by_arch_and_group(build_matrix(matrices, "linux"), "linux_amd64", "main-extensions")[
-        "runner"
-    ] == [
+    assert matrices.build.linux.get(
+        arch="linux_amd64", prefix="main-extensions"
+    ).runner == [
         "namespace-profile-linux-x64"
     ]
-    assert by_arch_and_group(
-        build_matrix(matrices, "linux"), "linux_arm64_musl", "main-extensions"
-    )["runner"] == [
+    assert matrices.build.linux.get(
+        arch="linux_arm64_musl", prefix="main-extensions"
+    ).runner == [
         "self-hosted",
         "linux",
         "arm64",
@@ -197,15 +200,10 @@ def test_runner_overrides_accept_strings_and_arrays(tmp_path):
 def test_macos_output_key_maps_from_osx_config(tmp_path):
     matrices = compute_core_matrices(load_repo_config(), reduced_ci_mode="disabled")
 
-    job = by_arch_and_group(build_matrix(matrices, "macos"), "osx_arm64", "main-extensions")
-    assert job["osx_build_arch"] == "arm64"
-    test = next(
-        job
-        for job in output_test_matrix(matrices, "macos")["include"]
-        if job["duckdb_arch"] == "osx_arm64"
-    )
-    assert test["osx_build_arch"] == "arm64"
-    assert "build_osx" not in matrices
+    job = matrices.build.macos.get(arch="osx_arm64", prefix="main-extensions")
+    assert job.osx_build_arch == "arm64"
+    test = matrices.test.macos.get(arch="osx_arm64")
+    assert test.osx_build_arch == "arm64"
 
 
 def test_linux_container_fields_use_fixed_image_owner_without_suffix(tmp_path):
@@ -215,20 +213,16 @@ def test_linux_container_fields_use_fixed_image_owner_without_suffix(tmp_path):
         reduced_ci_mode="disabled",
     )
 
-    main_job = by_arch_and_group(build_matrix(matrices, "linux"), "linux_amd64", "main-extensions")
-    rust_job = by_arch_and_group(build_matrix(matrices, "linux"), "linux_arm64", "rust-extensions")
-    assert main_job["container_name"] == "manylinux_2_28_amd64_main"
-    assert main_job["container"] == (
+    main_job = matrices.build.linux.get(arch="linux_amd64", prefix="main-extensions")
+    rust_job = matrices.build.linux.get(arch="linux_arm64", prefix="rust-extensions")
+    assert main_job.container_name == "manylinux_2_28_amd64_main"
+    assert main_job.container == (
         "ghcr.io/duckdb/duckdb-ci/manylinux_2_28_amd64_main:20260528-fbcf3036"
     )
-    assert rust_job["container_name"] == "manylinux_2_28_aarch64_rust"
-    linux_test = next(
-        job
-        for job in output_test_matrix(matrices, "linux")["include"]
-        if job["duckdb_arch"] == "linux_arm64"
-    )
-    assert linux_test["container_name"] == "manylinux_2_28_aarch64_main"
-    assert linux_test["container"] == (
+    assert rust_job.container_name == "manylinux_2_28_aarch64_rust"
+    linux_test = matrices.test.linux.get(arch="linux_arm64")
+    assert linux_test.container_name == "manylinux_2_28_aarch64_main"
+    assert linux_test.container == (
         "ghcr.io/duckdb/duckdb-ci/manylinux_2_28_aarch64_main:20260528-fbcf3036"
     )
 
@@ -244,19 +238,21 @@ def test_group_expansion_and_config_loading(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     matrices = compute_core_matrices(load_repo_config(), reduced_ci_mode="disabled")
 
-    main_job = by_arch_and_group(build_matrix(matrices, "linux"), "linux_amd64", "main-extensions")
-    rust_job = by_arch_and_group(build_matrix(matrices, "linux"), "linux_amd64", "rust-extensions")
-    external_job = by_arch_and_group(
-        build_matrix(matrices, "linux"), "linux_amd64", "external-extensions"
+    main_job = matrices.build.linux.get(arch="linux_amd64", prefix="main-extensions")
+    rust_job = matrices.build.linux.get(arch="linux_amd64", prefix="rust-extensions")
+    external_job = matrices.build.linux.get(
+        arch="linux_amd64", prefix="external-extensions"
     )
-    assert "extra_toolchains" not in main_job
-    assert main_job["extension_config"] == "set(IN_TREE 1)\n\nset(OUT_OF_TREE 1)"
-    assert rust_job["extension_config"] == "set(RUST 1)"
-    assert external_job["extension_config"] == "set(EXTERNAL 1)"
+    assert "extra_toolchains" not in main_job.to_dict()
+    assert main_job.to_dict()["artifact_prefix"] == "main-extensions"
+    assert "prefix" not in main_job.to_dict()
+    assert main_job.extension_config == "set(IN_TREE 1)\n\nset(OUT_OF_TREE 1)"
+    assert rust_job.extension_config == "set(RUST 1)"
+    assert external_job.extension_config == "set(EXTERNAL 1)"
     assert "linux_amd64_musl" not in [
-        entry["duckdb_arch"]
-        for entry in build_matrix(matrices, "linux")["include"]
-        if entry["artifact_prefix"] == "rust-extensions"
+        job.duckdb_arch
+        for job in matrices.build.linux.includes
+        if job.prefix == "rust-extensions"
     ]
 
 
@@ -268,26 +264,26 @@ def test_artifact_names_match_one_deduplicated_test_row_per_arch():
 
     build_jobs = [
         job
-        for job in build_matrix(matrices, "linux")["include"]
-        if job["duckdb_arch"] == "linux_arm64"
+        for job in matrices.build.linux.includes
+        if job.duckdb_arch == "linux_arm64"
     ]
-    assert [job["artifact_name"] for job in build_jobs] == [
+    assert [job.artifact_name for job in build_jobs] == [
         "external-extensions-linux_arm64",
         "main-extensions-linux_arm64",
         "rust-extensions-linux_arm64",
     ]
     test_jobs = [
         job
-        for job in output_test_matrix(matrices, "linux")["include"]
-        if job["duckdb_arch"] == "linux_arm64"
+        for job in matrices.test.linux.includes
+        if job.duckdb_arch == "linux_arm64"
     ]
     assert test_jobs == [
-        {
-            "artifact_pattern": "*-extensions-linux_arm64",
-            "container_name": "manylinux_2_28_aarch64_main",
-            "duckdb_arch": "linux_arm64",
-            "runner": ["ubuntu-24.04-arm"],
-        }
+        MatrixTestJob(
+            artifact_pattern="*-extensions-linux_arm64",
+            container_name="manylinux_2_28_aarch64_main",
+            duckdb_arch="linux_arm64",
+            runner=["ubuntu-24.04-arm"],
+        )
     ]
 
 
@@ -302,8 +298,8 @@ def test_arch_without_build_groups_has_no_test_row():
         reduced_ci_mode="disabled",
     )
 
-    assert build_matrix(matrices, "linux") == {"include": []}
-    assert output_test_matrix(matrices, "linux") == {"include": []}
+    assert matrices.build.linux.includes == []
+    assert matrices.test.linux.includes == []
 
 
 def test_render_github_output_uses_exact_output_keys(tmp_path):
@@ -327,66 +323,53 @@ def test_render_github_output_uses_exact_output_keys(tmp_path):
 
 
 def test_render_readable_matrix_log_includes_tables_details_and_empty_platforms():
-    matrices = {
-        "build_linux": {
-            "include": [
-                {
-                    "duckdb_arch": "linux_amd64",
-                    "artifact_prefix": "main-extensions",
-                    "artifact_name": "main-extensions-linux_amd64",
-                    "runner": ["ubuntu-24.04"],
-                    "vcpkg_target_triplet": "x64-linux-release",
-                    "vcpkg_host_triplet": "x64-linux-release",
-                    "container_name": "manylinux_2_28_amd64_main",
-                    "container": "ghcr.io/duckdb/duckdb-ci/manylinux_2_28_amd64_main:20260528-fbcf3036",
-                    "extension_config": "set(IN_TREE 1)\n\nset(OUT_OF_TREE 1)",
-                    "exclude_archs": "wasm_mvp;wasm_eh",
-                    "opt_in_archs": "",
-                }
-            ]
-        },
-        "test_linux": {
-            "include": [
-                {
-                    "duckdb_arch": "linux_amd64",
-                    "artifact_pattern": "*-extensions-linux_amd64",
-                    "runner": ["ubuntu-24.04"],
-                    "container_name": "manylinux_2_28_amd64_main",
-                    "container": "ghcr.io/duckdb/duckdb-ci/manylinux_2_28_amd64_main:20260528-fbcf3036",
-                }
-            ]
-        },
-        "build_macos": {
-            "include": [
-                {
-                    "duckdb_arch": "osx_arm64",
-                    "artifact_prefix": "main-extensions",
-                    "artifact_name": "main-extensions-osx_arm64",
-                    "runner": ["macos-15"],
-                    "vcpkg_target_triplet": "arm64-osx-release",
-                    "vcpkg_host_triplet": "arm64-osx-release",
-                    "osx_build_arch": "arm64",
-                    "extension_config": "",
-                    "exclude_archs": "",
-                    "opt_in_archs": "osx_arm64",
-                }
-            ]
-        },
-        "test_macos": {
-            "include": [
-                {
-                    "duckdb_arch": "osx_arm64",
-                    "artifact_pattern": "*-extensions-osx_arm64",
-                    "runner": ["macos-15"],
-                    "osx_build_arch": "arm64",
-                }
-            ]
-        },
-        "build_windows": {"include": []},
-        "test_windows": {"include": []},
-        "build_wasm": {"include": []},
-        "test_wasm": {"include": []},
-    }
+    matrices = Matrices()
+    matrices.build.linux.includes.append(
+        BuildJob(
+            duckdb_arch="linux_amd64",
+            prefix="main-extensions",
+            artifact_name="main-extensions-linux_amd64",
+            runner=["ubuntu-24.04"],
+            vcpkg_target_triplet="x64-linux-release",
+            vcpkg_host_triplet="x64-linux-release",
+            container_name="manylinux_2_28_amd64_main",
+            container="ghcr.io/duckdb/duckdb-ci/manylinux_2_28_amd64_main:20260528-fbcf3036",
+            extension_config="set(IN_TREE 1)\n\nset(OUT_OF_TREE 1)",
+            exclude_archs="wasm_mvp;wasm_eh",
+            opt_in_archs="",
+        )
+    )
+    matrices.test.linux.includes.append(
+        MatrixTestJob(
+            duckdb_arch="linux_amd64",
+            artifact_pattern="*-extensions-linux_amd64",
+            runner=["ubuntu-24.04"],
+            container_name="manylinux_2_28_amd64_main",
+            container="ghcr.io/duckdb/duckdb-ci/manylinux_2_28_amd64_main:20260528-fbcf3036",
+        )
+    )
+    matrices.build.macos.includes.append(
+        BuildJob(
+            duckdb_arch="osx_arm64",
+            prefix="main-extensions",
+            artifact_name="main-extensions-osx_arm64",
+            runner=["macos-15"],
+            vcpkg_target_triplet="arm64-osx-release",
+            vcpkg_host_triplet="arm64-osx-release",
+            osx_build_arch="arm64",
+            extension_config="",
+            exclude_archs="",
+            opt_in_archs="osx_arm64",
+        )
+    )
+    matrices.test.macos.includes.append(
+        MatrixTestJob(
+            duckdb_arch="osx_arm64",
+            artifact_pattern="*-extensions-osx_arm64",
+            runner=["macos-15"],
+            osx_build_arch="arm64",
+        )
+    )
 
     output = render_readable_matrix_log(matrices)
 
