@@ -58,15 +58,22 @@ runs:
     - id: matrix
       name: Compute matrix
       shell: bash
+      env:
+        EXCLUDED_ARCHS: ${{ inputs.exclude_archs }}
+        OPT_IN_ARCHS: ${{ inputs.opt_in_archs }}
+        RUNNERS: ${{ inputs.runners }}
+        REDUCED_CI_MODE: ${{ inputs.reduced_ci_mode }}
+        IMAGE_VERSION: ${{ inputs.image_version }}
+        GROUPS: ${{ inputs.groups }}
       run: |
         set -euo pipefail
         export PYTHONPATH="${GITHUB_ACTION_PATH}/..${PYTHONPATH:+:${PYTHONPATH}}"
         python3 -m matrix.main \
           --extensions "${GITHUB_ACTION_PATH}/extensions.json" \
-          --exclude-archs "${{ inputs.exclude_archs }}" \
-          --opt-in-archs "${{ inputs.opt_in_archs }}" \
-          --runners '${{ inputs.runners }}' \
-          --reduced-ci-mode "${{ inputs.reduced_ci_mode }}" \
-          --image-version "${{ inputs.image_version }}" \
-          --groups "${{ inputs.groups }}" \
+          --exclude-archs "${EXCLUDED_ARCHS}" \
+          --opt-in-archs "${OPT_IN_ARCHS}" \
+          --runners "${RUNNERS}" \
+          --reduced-ci-mode "${REDUCED_CI_MODE}" \
+          --image-version "${IMAGE_VERSION}" \
+          --groups "${GROUPS}" \
           --out "$GITHUB_OUTPUT"
