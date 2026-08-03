@@ -40,9 +40,10 @@ STORAGE_TYPES = ("duckdb", "ducklake")
 #   Run Time (s): real 0.008 user 0.000769 sys 0.001329
 RUN_TIME_RE = re.compile(r"^Run Time \(s\): real ([0-9.eE+-]+)")
 
-# A pinned DuckDB release tag such as v1.5.5 (or 1.5.5). Floating refs like "latest" are
-# intentionally rejected so recorded timings always map to a known DuckDB version.
-VERSION_RE = re.compile(r"^v?\d+\.\d+\.\d+$")
+# A pinned DuckDB release tag such as v1.5.5 (or 1.5.5), optionally with a pre-release
+# suffix like 2.0.0-alpha36255. Floating refs like "latest" are intentionally rejected so
+# recorded timings always map to a known DuckDB version.
+VERSION_RE = re.compile(r"^v?\d+\.\d+\.\d+(-[0-9A-Za-z.]+)?$")
 
 # The official DuckDB install script installs a pinned CLI to ~/.duckdb/cli/<version>/duckdb.
 DUCKDB_CLI_ROOT = os.path.expanduser("~/.duckdb/cli")
