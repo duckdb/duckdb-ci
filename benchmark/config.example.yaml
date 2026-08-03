@@ -1,7 +1,7 @@
 # Example configuration for the DuckDB benchmark harness.
 # Run with: python3 run_benchmark.py --config config.yaml
 
-# Recorded as a column in the results CSV to identify this run.
+# Recorded as a column in the `runs` table to identify this run.
 benchmark_name: my_first_benchmark
 
 # The DuckDB CLI used to run the queries. Two forms are accepted:
@@ -24,16 +24,17 @@ queries: benchmark/queries
 # Directory of expected answers, one qNN.csv per query (pipe-delimited, with header).
 answers: benchmark/answers
 
-# Output CSV. Each query runs in one subprocess: a cold run to warm caches (not recorded)
-# plus 10 timed warm runs. A query that fails (wrong result, timeout, or error) is recorded
-# with status=failed and skipped, and the run continues. Columns:
-#   benchmark_name,query,status,error,median_seconds,run_1_seconds,...,run_10_seconds
-results: benchmark/results.csv
+# Results are written into a DuckLake. Each invocation appends a `runs` row (id, timestamp,
+# duckdb version, os, cpu arch, settings) and one `query_results` row per query (status,
+# error, cold_seconds, median_seconds, timings_seconds DOUBLE[]).
+results:
+  ducklake: benchmark/results.ducklake   # DuckLake target (local metadata file or connection string)
+  # data_path: benchmark/results_data    # optional DATA_PATH for the DuckLake
 
 # Optional: per query run timeout in seconds (default: 600).
 timeout: 600
 
 # Optional: DuckDB settings applied via the CLI before each query runs.
 # Omit either to leave DuckDB at its default.
-threads: 4              # SET threads = 4;
-memory_limit: 4GB       # SET memory_limit = '4GB';
+threads: 4
+memory_limit: 4GB

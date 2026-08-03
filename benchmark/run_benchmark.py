@@ -1,16 +1,20 @@
 import argparse
-import csv
 import functools
+import json
 import os
+import platform
 import queue
 import re
 import shutil
 import statistics
 import subprocess
 import sys
+import tempfile
 import threading
 import time
+import uuid
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import List, NoReturn, Optional, Tuple
 
 import yaml
@@ -36,6 +40,11 @@ RUNS = 10
 
 # Alias the DuckLake catalog is attached under before running the queries.
 DUCKLAKE_ALIAS = "ducklake_bench"
+
+# Alias and table names of the DuckLake instance the results are written to.
+RESULTS_ALIAS = "results_lake"
+RUNS_TABLE = "runs"
+QUERY_RESULTS_TABLE = "query_results"
 
 STORAGE_TYPES = ("duckdb", "ducklake")
 
@@ -110,7 +119,8 @@ class BenchmarkConfig:
     storage_path: str
     queries: str
     answers: str
-    results: str
+    results_ducklake: str
+    results_data_path: Optional[str] = None
     timeout: int = DEFAULT_TIMEOUT
     threads: Optional[int] = None
     memory_limit: Optional[str] = None
@@ -134,6 +144,10 @@ class BenchmarkConfig:
         if storage_type not in STORAGE_TYPES:
             raise ValueError(f"'storage.type' must be one of {STORAGE_TYPES}, got: {storage_type!r}")
 
+        results = raw["results"]
+        if not isinstance(results, dict) or not results.get("ducklake"):
+            raise ValueError("'results' must be a mapping with a 'ducklake' target")
+
         timeout = raw.get("timeout", DEFAULT_TIMEOUT)
         if not isinstance(timeout, int) or timeout <= 0:
             raise ValueError(f"'timeout' must be a positive integer, got: {timeout!r}")
@@ -153,7 +167,8 @@ class BenchmarkConfig:
             storage_path=storage["path"],
             queries=raw["queries"],
             answers=raw["answers"],
-            results=raw["results"],
+            results_ducklake=results["ducklake"],
+            results_data_path=results.get("data_path"),
             timeout=timeout,
             threads=threads,
             memory_limit=memory_limit,
@@ -195,6 +210,7 @@ class QueryResult:
     name: str
     status: str                 # "ok" or "failed"
     error: str = ""             # failure reason (empty when status is "ok")
+    cold_timing: Optional[float] = None
     timings: List[float] = field(default_factory=list)
     median: Optional[float] = None
 
@@ -204,6 +220,16 @@ class BenchmarkRunner:
         self.config = config
         self.duckdb_binary = resolve_duckdb_binary(config.duckdb_binary)
         self.query_files = self.discover_queries()
+        self.run_id = str(uuid.uuid4())
+
+    def duckdb_version(self) -> str:
+        """The actual CLI version, parsed from `--version` (e.g. 'v1.5.4 (Variegata)
+        08e34c447b' -> 'v1.5.4'). Read from the binary since `duckdb_binary` may be a local
+        build path that carries no version."""
+        proc = subprocess.run(
+            [self.duckdb_binary, "--version"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+        )
+        return proc.stdout.strip().split()[0] if proc.stdout.strip() else ""
 
     def discover_queries(self) -> List[str]:
         query_files = sorted(
@@ -245,20 +271,20 @@ class BenchmarkRunner:
             ]
         return lines
 
-    def run_query(self, query_path: str) -> List[float]:
+    def run_query(self, query_path: str) -> Tuple[Optional[float], List[float]]:
         with open(query_path, 'r') as f:
             query_sql = f.read().strip()
         # Each run is fed as a separate statement, so the query must be terminated.
         if not query_sql.endswith(";"):
             query_sql += ";"
 
-        total_runs = RUNS + 1  # 1 cold (discarded) + RUNS warm (recorded)
+        total_runs = RUNS + 1  # 1 cold + RUNS warm (recorded)
         return self.execute_runs(query_path, query_sql, total_runs)
 
-    def execute_runs(self, query_path: str, query_sql: str, total_runs: int) -> List[float]:
+    def execute_runs(self, query_path: str, query_sql: str, total_runs: int) -> Tuple[Optional[float], List[float]]:
         """Run `query_sql` `total_runs` times in one DuckDB subprocess (so the warm runs
-        reuse the cold run's cache). Each run's result is validated as it
-        completes, so a wrong result aborts the query early. Returns the warm timings."""
+        reuse the cold run's cache). Each run's result is validated as it completes, so a
+        wrong result aborts the query early. Returns (cold_timing, warm_timings)."""
         answer_path = self.answer_path_for(query_path)
         with open(answer_path, 'r') as f:
             expected = f.read().strip()
@@ -309,6 +335,7 @@ class BenchmarkRunner:
             # letting a failed statement look like an empty result.
             setup = "\n".join([".bail on", *self.init_setup(), ".timer on", ".mode list", ""])
             self._write(proc, setup, exited)
+            cold_timing: Optional[float] = None
             warm_timings: List[float] = []
             for run_index in range(total_runs):
                 self._write(proc, query_sql + "\n", exited)
@@ -317,17 +344,19 @@ class BenchmarkRunner:
                     self.validate(result_block, expected, answer_path)
                 except QueryFailure as mismatch:
                     # A DuckDB error still returns an empty result plus a `Run time` line causing also a result mismatch.
-                    # The only signal that separates this case from an actual query mismatch error is whether the process stays alive. 
+                    # The only signal that separates this case from an actual query mismatch error is whether the process stays alive.
                     # In case of DuckDB error, the process exits. So on a mismatch failure we ask exactly that.
                     try:
                         proc.wait(timeout=1)
                     except subprocess.TimeoutExpired:
                         raise mismatch  # process healthy — it really is a wrong result
                     exited()
-                if run_index >= 1:  # the first run is the cold run; only warm runs are recorded
+                if run_index == 0:  # the first run is the cold run; recorded separately
+                    cold_timing = timing
+                else:
                     warm_timings.append(timing)
             self._write(proc, ".quit\n", lambda: None)
-            return warm_timings
+            return cold_timing, warm_timings
         finally:
             if proc.poll() is None:
                 proc.kill()
@@ -376,27 +405,92 @@ class BenchmarkRunner:
         for query_path in self.query_files:
             name = os.path.splitext(os.path.basename(query_path))[0]
             try:
-                timings = self.run_query(query_path)
+                cold_timing, timings = self.run_query(query_path)
             except QueryFailure as failure:
                 self.print_failure(query_path, failure)
                 results.append(QueryResult(name, status="failed", error=failure.reason))
                 continue
             median = statistics.median(timings)
             print(f"{name}: median {median}s over {RUNS} warm runs")
-            results.append(QueryResult(name, status="ok", timings=timings, median=median))
+            results.append(
+                QueryResult(name, status="ok", cold_timing=cold_timing, timings=timings, median=median)
+            )
         return results
 
+    def run_record(self) -> dict:
+        """The single `runs` row: identity + environment + settings for this run."""
+        return {
+            "run_id": self.run_id,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "benchmark_name": self.config.benchmark_name,
+            "duckdb_version": self.duckdb_version(),
+            "os": "macos" if platform.system() == "Darwin" else platform.system().lower(),
+            "cpu_arch": platform.machine(),
+            "threads": self.config.threads,
+            "memory_limit": self.config.memory_limit,
+            "storage_type": self.config.storage_type,
+            "timeout": self.config.timeout,
+            "warm_runs": RUNS,
+        }
+
+    def query_records(self, results: List[QueryResult]) -> List[dict]:
+        """One `query_results` row per query, tagged with this run's id."""
+        return [
+            {
+                "run_id": self.run_id,
+                "query": r.name,
+                "status": r.status,
+                "error": r.error or None,
+                "cold_timing": r.cold_timing,
+                "median_seconds": r.median,
+                "timings_seconds": r.timings,
+            }
+            for r in results
+        ]
+
     def write_results(self, results: List[QueryResult]) -> None:
-        with open(self.config.results, 'w', newline='') as f:
-            writer = csv.writer(f)
-            run_columns = [f"run_{i}_seconds" for i in range(1, RUNS + 1)]
-            writer.writerow(["benchmark_name", "query", "status", "error", "median_seconds", *run_columns])
-            for r in results:
-                median = r.median if r.median is not None else ""
-                # Pad missing timings (a failed query has none) so every row has RUNS columns.
-                run_cells = list(r.timings) + [""] * (RUNS - len(r.timings))
-                writer.writerow([self.config.benchmark_name, r.name, r.status, r.error, median, *run_cells])
-        print(f"Wrote {len(results)} results to {self.config.results}")
+        """Write this run into the results DuckLake: stage the rows as JSON, then attach the
+        DuckLake and INSERT (creating the tables on first use)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            runs_json = os.path.join(tmp, "runs.json")
+            query_results_json = os.path.join(tmp, "query_results.json")
+            with open(runs_json, "w") as f:
+                json.dump([self.run_record()], f)
+            with open(query_results_json, "w") as f:
+                json.dump(self.query_records(results), f)
+
+            script = self.results_load_script(runs_json, query_results_json)
+            proc = subprocess.run(
+                [self.duckdb_binary], input=script, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+            )
+            if proc.returncode != 0:
+                raise RuntimeError(f"Failed to write results to DuckLake:\n{proc.stderr.strip()}")
+        print(f"Wrote run {self.run_id} ({len(results)} queries) to DuckLake {self.config.results_ducklake}")
+
+    def results_load_script(self, runs_json: str, query_results_json: str) -> str:
+        data_path = f" (DATA_PATH '{self.config.results_data_path}')" if self.config.results_data_path else ""
+        return f"""
+INSTALL ducklake;
+LOAD ducklake;
+ATTACH 'ducklake:{self.config.results_ducklake}' AS {RESULTS_ALIAS}{data_path};
+USE {RESULTS_ALIAS};
+CREATE TABLE IF NOT EXISTS {RUNS_TABLE} (
+  run_id VARCHAR, timestamp TIMESTAMP, benchmark_name VARCHAR, duckdb_version VARCHAR,
+  os VARCHAR, cpu_arch VARCHAR, threads INTEGER, memory_limit VARCHAR,
+  storage_type VARCHAR, timeout INTEGER, warm_runs INTEGER
+);
+CREATE TABLE IF NOT EXISTS {QUERY_RESULTS_TABLE} (
+  run_id VARCHAR, query VARCHAR, status VARCHAR, error VARCHAR,
+  cold_timing DOUBLE, median_seconds DOUBLE, timings_seconds DOUBLE[]
+);
+INSERT INTO {RUNS_TABLE} BY NAME
+  SELECT * FROM read_json_auto('{runs_json}');
+INSERT INTO {QUERY_RESULTS_TABLE} BY NAME
+  SELECT * FROM read_json('{query_results_json}', columns = {{
+    'run_id': 'VARCHAR', 'query': 'VARCHAR', 'status': 'VARCHAR', 'error': 'VARCHAR',
+    'cold_timing': 'DOUBLE', 'median_seconds': 'DOUBLE', 'timings_seconds': 'DOUBLE[]'
+  }});
+"""
 
 
 def main():
@@ -410,8 +504,13 @@ def main():
     except (OSError, ValueError, RuntimeError, yaml.YAMLError) as e:
         print(f"Configuration error: {e}")
         sys.exit(1)
+
     results = runner.run()
-    runner.write_results(results)
+    try:
+        runner.write_results(results)
+    except RuntimeError as e:
+        print(e)
+        sys.exit(1)
 
 
 if __name__ == "__main__":
