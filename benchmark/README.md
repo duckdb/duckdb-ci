@@ -45,34 +45,39 @@ The `storage` field selects what the queries run against:
 
 ## DuckDB settings
 
-The optional `threads` and `memory_limit` config fields are applied via the CLI before each
-query, as `SET threads = <n>;` and `SET memory_limit = '<value>';` respectively. Omit either
-to leave DuckDB at its default. Like the storage setup, they run before `.timer on`, so they
-are not included in the recorded query time.
+The optional `threads` and `memory_limit` config fields are applied via the CLI as
+`SET threads = <n>;` and `SET memory_limit = '<value>';`. Omit either to leave DuckDB at its
+default. Together with the storage setup, they run **once per subprocess** before
+`.timer on`, so they are set once per query (not per run) and are never included in the
+recorded query time.
 
 ## How it works
 
-For each `qNN.sql` in the `queries` directory, the harness runs the settings/storage setup
-(if any), then the query, under the DuckDB CLI with `.timer on` and `.mode list`:
+Each `qNN.sql` is benchmarked in a **single DuckDB subprocess**: the one-time setup, then
+the query executed 11 times under `.timer on` — a cold run to warm the caches followed by
+10 timed warm runs. Running all iterations in one process means the warm runs share the
+cache the cold run populated. The `timeout` parameter applies **per query run**.
 
 ```sh
-printf '.timer on\n.mode list\n<query>' | duckdb <data.db>
+# conceptually, per query:
+printf '.bail on\nSET threads = 4;\n.timer on\n.mode list\n<query>\n<query>\n...' | duckdb <data.db>
 ```
 
-- Storage setup runs **before** `.timer on`, so only the query is timed and only the query
-  emits result rows.
+- Setup runs **before** `.timer on`, so it is not timed and only the query executions emit
+  result rows.
+- `.bail on` makes DuckDB stop and exit non-zero on the first error, so a failing statement
+  is reported as an error (with DuckDB's message) rather than a silent empty result.
 - `.mode list` produces pipe-delimited output with a header row, matching the format of
   the answer files.
-- `.timer on` appends a `Run Time (s): real <seconds> ...` line, which is parsed for the
-  recorded execution time (pure query execution, excluding CLI startup).
+- `.timer on` appends a `Run Time (s): real <seconds> ...` line after each execution, and
+  the harness parses one timing per run (pure query execution, excluding CLI startup).
 
-Each query's first run is validated against `answers/qNN.csv` (same stem as the query); only
-if it matches does the query run the remaining times, and the report records all 10 timings
-plus their median. A query that **fails** — wrong result, timeout, non-zero DuckDB exit, or
-unparseable output — is not retried: its failure is recorded in the report (`status=failed`
-with a short `error`, and the full diff printed to stdout) and the run continues with the
-next query. The process still exits 0; the `status` column is how you tell which queries
-failed.
+The 10 warm runs' results are validated against `answers/qNN.csv` (same stem as the query),
+and the report records those 10 timings plus their median. A query that **fails** — wrong
+result, timeout, non-zero DuckDB exit, or unparseable output — is recorded in the report
+(`status=failed` with a short `error`, and the full diff printed to stdout) and the run
+continues with the next query. The process still exits 0; the `status` column is how you
+tell which queries failed.
 
 ## Layout
 

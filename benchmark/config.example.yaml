@@ -24,12 +24,13 @@ queries: benchmark/queries
 # Directory of expected answers, one qNN.csv per query (pipe-delimited, with header).
 answers: benchmark/answers
 
-# Output CSV. Each query runs 10 times; a query that fails (wrong result, timeout, or
-# error) is recorded with status=failed and skipped, and the run continues. Columns:
+# Output CSV. Each query runs in one subprocess: a cold run to warm caches (not recorded)
+# plus 10 timed warm runs. A query that fails (wrong result, timeout, or error) is recorded
+# with status=failed and skipped, and the run continues. Columns:
 #   benchmark_name,query,status,error,median_seconds,run_1_seconds,...,run_10_seconds
 results: benchmark/results.csv
 
-# Optional: per-query timeout in seconds (default: 600).
+# Optional: per query run timeout in seconds (default: 600).
 timeout: 600
 
 # Optional: DuckDB settings applied via the CLI before each query runs.

@@ -2,13 +2,16 @@ import argparse
 import csv
 import functools
 import os
+import queue
 import re
 import shutil
 import statistics
 import subprocess
 import sys
+import threading
+import time
 from dataclasses import dataclass, field
-from typing import List, Optional, Tuple
+from typing import List, NoReturn, Optional, Tuple
 
 import yaml
 
@@ -28,7 +31,7 @@ STDOUT_HEADER = '''====================================================
 MAX_TIMEOUT = 3600
 DEFAULT_TIMEOUT = 600
 
-# Number of times each query is run; the report records every timing plus their median.
+# Number of timed (warm) runs recorded per query. Each query is run once in the beginning cold.
 RUNS = 10
 
 # Alias the DuckLake catalog is attached under before running the queries.
@@ -40,8 +43,8 @@ STORAGE_TYPES = ("duckdb", "ducklake")
 #   Run Time (s): real 0.008 user 0.000769 sys 0.001329
 RUN_TIME_RE = re.compile(r"^Run Time \(s\): real ([0-9.eE+-]+)")
 
-# A pinned DuckDB release tag such as v1.5.5 (or 1.5.5), optionally with a pre-release
-# suffix like 2.0.0-alpha36255. Floating refs like "latest" are intentionally rejected so
+# A pinned DuckDB release tag such as v1.5.5 (or 1.5.5), or alpha releases
+# 2.0.0-alpha36255. Floating refs like "latest" are intentionally rejected so
 # recorded timings always map to a known DuckDB version.
 VERSION_RE = re.compile(r"^v?\d+\.\d+\.\d+(-[0-9A-Za-z.]+)?$")
 
@@ -60,8 +63,7 @@ def install_release_cli(version: str) -> str:
         raise RuntimeError("curl is required to install a DuckDB release but was not found on PATH")
 
     print(f"Installing DuckDB {version} via {DUCKDB_INSTALL_URL}")
-    # DUCKDB_VERSION pins the release. It is passed through the environment (not
-    # interpolated into the shell command) so the version string cannot inject shell code.
+    
     env = {**os.environ, "DUCKDB_VERSION": version}
     proc = subprocess.run(
         f"curl -fsSL {DUCKDB_INSTALL_URL} | sh",
@@ -228,10 +230,7 @@ class BenchmarkRunner:
             cmd.append(self.config.storage_path)
         return cmd
 
-    def build_script(self, query_sql: str) -> str:
-        """Storage setup runs before `.timer on` so only the query is timed and only the
-        query emits result rows. `.mode list` yields pipe-delimited output with a header
-        row, matching the answer file format."""
+    def init_setup(self) -> List[str]:
         lines: List[str] = []
         if self.config.threads is not None:
             lines.append(f"SET threads = {self.config.threads};")
@@ -244,75 +243,121 @@ class BenchmarkRunner:
                 f"ATTACH 'ducklake:{self.config.storage_path}' AS {DUCKLAKE_ALIAS};",
                 f"USE {DUCKLAKE_ALIAS};",
             ]
-        lines += [".timer on", ".mode list", query_sql]
-        script = "\n".join(lines)
-        if not script.endswith("\n"):
-            script += "\n"
-        return script
+        return lines
 
-    def run_query_once(self, query_path: str) -> Tuple[float, str]:
-        """Run a query a single time, returning (execution_time_seconds, result_block)."""
+    def run_query(self, query_path: str) -> List[float]:
         with open(query_path, 'r') as f:
             query_sql = f.read().strip()
+        # Each run is fed as a separate statement, so the query must be terminated.
+        if not query_sql.endswith(";"):
+            query_sql += ";"
 
-        duckdb_cli = self.build_command()
-        try:
-            proc = subprocess.run(
-                duckdb_cli,
-                input=self.build_script(query_sql),
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                timeout=self.config.timeout,
-            )
-        except subprocess.TimeoutExpired:
-            raise QueryFailure(f"timeout after {self.config.timeout}s")
+        total_runs = RUNS + 1  # 1 cold (discarded) + RUNS warm (recorded)
+        return self.execute_runs(query_path, query_sql, total_runs)
 
-        if proc.returncode != 0:
-            raise QueryFailure(
-                "DuckDB exited with a non-zero status", stdout=proc.stdout, stderr=proc.stderr
-            )
-
-        return self.parse_output(proc.stdout)
-
-    def parse_output(self, stdout: str) -> Tuple[float, str]:
-        result_lines: List[str] = []
-        timing: Optional[float] = None
-        for line in stdout.splitlines():
-            match = RUN_TIME_RE.match(line)
-            if match:
-                # Only the query runs under the timer, so there is a single timing line.
-                timing = float(match.group(1))
-            else:
-                result_lines.append(line)
-
-        if timing is None:
-            raise QueryFailure("could not parse a 'Run Time (s)' line from DuckDB output", stdout=stdout)
-
-        result_block = "\n".join(result_lines).strip()
-        return timing, result_block
-
-    def validate(self, query_path: str, result_block: str) -> None:
+    def execute_runs(self, query_path: str, query_sql: str, total_runs: int) -> List[float]:
+        """Run `query_sql` `total_runs` times in one DuckDB subprocess (so the warm runs
+        reuse the cold run's cache). Each run's result is validated as it
+        completes, so a wrong result aborts the query early. Returns the warm timings."""
         answer_path = self.answer_path_for(query_path)
         with open(answer_path, 'r') as f:
             expected = f.read().strip()
+
+        proc = subprocess.Popen(
+            self.build_command(),
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            bufsize=1,
+        )
+        stdout_lines: "queue.Queue[Optional[str]]" = queue.Queue()
+        stderr_chunks: List[str] = []
+        out_reader = threading.Thread(target=self._pump, args=(proc.stdout, stdout_lines), daemon=True)
+        err_reader = threading.Thread(target=lambda: stderr_chunks.append(proc.stderr.read()), daemon=True)
+        out_reader.start()
+        err_reader.start()
+
+        def exited() -> NoReturn:
+            # stdout closed / broken pipe: DuckDB ended (typically a query error). Surface it.
+            proc.wait()
+            err_reader.join(timeout=5)
+            raise QueryFailure("DuckDB exited with a non-zero status", stderr="".join(stderr_chunks))
+
+        def await_run() -> Tuple[float, str]:
+            """Read one run's output, up to `timeout` seconds for its `Run Time` line."""
+            result_lines: List[str] = []
+            deadline = time.monotonic() + self.config.timeout
+            while True:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise QueryFailure(f"timeout after {self.config.timeout}s")
+                try:
+                    line = stdout_lines.get(timeout=remaining)
+                except queue.Empty:
+                    raise QueryFailure(f"timeout after {self.config.timeout}s")
+                if line is None:
+                    exited()
+                match = RUN_TIME_RE.match(line)
+                if match:
+                    return float(match.group(1)), "\n".join(result_lines).strip()
+                result_lines.append(line)
+
+        try:
+            # `.bail on` makes DuckDB stop and exit non-zero on the first error 
+            # instead of continuing; that surfaces the error via `exited()` rather than
+            # letting a failed statement look like an empty result.
+            setup = "\n".join([".bail on", *self.init_setup(), ".timer on", ".mode list", ""])
+            self._write(proc, setup, exited)
+            warm_timings: List[float] = []
+            for run_index in range(total_runs):
+                self._write(proc, query_sql + "\n", exited)
+                timing, result_block = await_run()
+                try:
+                    self.validate(result_block, expected, answer_path)
+                except QueryFailure as mismatch:
+                    # A DuckDB error still returns an empty result plus a `Run time` line causing also a result mismatch.
+                    # The only signal that separates this case from an actual query mismatch error is whether the process stays alive. 
+                    # In case of DuckDB error, the process exits. So on a mismatch failure we ask exactly that.
+                    try:
+                        proc.wait(timeout=1)
+                    except subprocess.TimeoutExpired:
+                        raise mismatch  # process healthy — it really is a wrong result
+                    exited()
+                if run_index >= 1:  # the first run is the cold run; only warm runs are recorded
+                    warm_timings.append(timing)
+            self._write(proc, ".quit\n", lambda: None)
+            return warm_timings
+        finally:
+            if proc.poll() is None:
+                proc.kill()
+            for stream in (proc.stdin, proc.stdout, proc.stderr):
+                try:
+                    stream.close()
+                except OSError:
+                    pass
+            proc.wait()
+
+    @staticmethod
+    def _pump(stream, out_queue: "queue.Queue[Optional[str]]") -> None:
+        for line in stream:
+            out_queue.put(line.rstrip("\n"))
+        out_queue.put(None)  # EOF sentinel
+
+    def _write(self, proc: "subprocess.Popen[str]", data: str, on_broken) -> None:
+        try:
+            proc.stdin.write(data)
+            proc.stdin.flush()
+        except (BrokenPipeError, OSError):
+            on_broken()
+
+    def validate(self, result_block: str, expected: str, answer_path: str) -> None:
         if result_block != expected:
             raise QueryFailure(
                 "result does not match expected answer",
                 detail=f"Expected answer: {answer_path}\n"
                 f"---- EXPECTED ----\n{expected}\n---- ACTUAL ----\n{result_block}",
             )
-
-    def time_query(self, query_path: str) -> List[float]:
-        """Validate the query on its first run, then (only if it validated) run it the
-        remaining times for timing. Raises QueryFailure if any run fails."""
-        timing, result_block = self.run_query_once(query_path)
-        self.validate(query_path, result_block)
-        timings = [timing]
-        for _ in range(RUNS - 1):
-            timing, _ = self.run_query_once(query_path)
-            timings.append(timing)
-        return timings
 
     def print_failure(self, query_path: str, failure: QueryFailure) -> None:
         print(f"Failed to run benchmark {os.path.basename(query_path)}")
@@ -331,13 +376,13 @@ class BenchmarkRunner:
         for query_path in self.query_files:
             name = os.path.splitext(os.path.basename(query_path))[0]
             try:
-                timings = self.time_query(query_path)
+                timings = self.run_query(query_path)
             except QueryFailure as failure:
                 self.print_failure(query_path, failure)
                 results.append(QueryResult(name, status="failed", error=failure.reason))
                 continue
             median = statistics.median(timings)
-            print(f"{name}: median {median}s over {RUNS} runs")
+            print(f"{name}: median {median}s over {RUNS} warm runs")
             results.append(QueryResult(name, status="ok", timings=timings, median=median))
         return results
 
