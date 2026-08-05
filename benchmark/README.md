@@ -93,12 +93,49 @@ data.db          # DuckDB database (or a DuckLake) the queries run against
 
 ## Output
 
-CSV with a header and one row per query: `status` (`ok`/`failed`), an `error` reason for
-failures, then the median and each of the 10 run timings (all in seconds). A failed query
-leaves the timing cells blank:
+Results are written into a **DuckLake** (configured via `results.ducklake`). Each
+invocation is one benchmark *run*, identified by a generated UUID. 
+Two tables are created on first use:
 
-```
-benchmark_name,query,status,error,median_seconds,run_1_seconds,...,run_10_seconds
-my_benchmark,q01,ok,,0.008,0.009,0.008,...,0.008
-my_benchmark,q02,failed,result does not match expected answer,,,...,
-```
+**`runs`** — one row per invocation:
+
+| column | notes |
+|---|---|
+| `run_id` | uuid4, logical key |
+| `timestamp` | run start, UTC |
+| `benchmark_name` | from config |
+| `duckdb_version` | from the CLI's `--version` (e.g. `v1.5.4`) |
+| `os`, `cpu_arch` | e.g. `macos` / `arm64` |
+| `threads`, `memory_limit`, `storage_type`, `timeout`, `warm_runs` | run settings |
+
+**`query_results`** — one row per query per run, logical key `(run_id, query)`:
+
+| column | notes |
+|---|---|
+| `run_id` | foreign key to `runs.run_id` |
+| `query` | `qNN` stem |
+| `status` | `ok` / `failed` |
+| `error` | failure reason, `NULL` when `ok` |
+| `cold_seconds` | cold run's time |
+| `median_seconds` | median of the warm runs (`NULL` when failed) |
+| `timings_seconds` | `DOUBLE[]` of the 10 warm timings (`[]` when failed) |
+
+The harness stages the rows as JSON and loads them via a `duckdb` subprocess
+(`ATTACH 'ducklake:…'` + `INSERT`), so writing results needs the `ducklake` extension at
+run time.
+
+### Results DuckDB
+
+Because the version under test (`duckdb_binary`) may be an alpha or a build without the
+`ducklake` extension, the DuckLake write uses a **separate pinned stable DuckDB** —
+overridable via `results.duckdb_version`. Before loading,
+the harness probes `duckdb_extensions()` and aborts with a clear message if `ducklake`
+(or `httpfs`, for S3) is missing. The `runs.duckdb_version` column always records the
+version *under test*, not this writer.
+
+### S3-backed DuckLake
+
+Point `results.ducklake` / `results.data_path` at `s3://…` and add a `results.s3` block
+(`region`, optional `endpoint`/`url_style`). The harness loads `httpfs` and creates an S3
+secret with `PROVIDER credential_chain`.
+DuckDB reads s3 credentials from the environment and injects them at invocation; the harness stays secret-store-agnostic.

@@ -28,8 +28,14 @@ answers: benchmark/answers
 # duckdb version, os, cpu arch, settings) and one `query_results` row per query (status,
 # error, cold_seconds, median_seconds, timings_seconds DOUBLE[]).
 results:
-  ducklake: benchmark/results.ducklake   # DuckLake target (local metadata file or connection string)
-  # data_path: benchmark/results_data    # optional DATA_PATH for the DuckLake
+  ducklake: benchmark/results.ducklake   # DuckLake target (local metadata file, connection string, or s3://...)
+  # data_path: benchmark/results_data    # optional DATA_PATH for the DuckLake (may be s3://...)
+  # duckdb_version: v1.5.5               # stable DuckDB used for DuckLake access (must have the
+                                         #   ducklake extension); defaults to a pinned stable release
+  # s3:
+  #   region: eu-west-1
+  #   endpoint: ...
+  #   url_style: path
 
 # Optional: per query run timeout in seconds (default: 600).
 timeout: 600

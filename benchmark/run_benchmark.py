@@ -46,6 +46,14 @@ RESULTS_ALIAS = "results_lake"
 RUNS_TABLE = "runs"
 QUERY_RESULTS_TABLE = "query_results"
 
+# Pinned stable DuckDB used to access the DuckLake storing the results, so the `ducklake` extension is
+# always available regardless of the version under test. Overridable via
+# the `results.duckdb_version` config key.
+DEFAULT_RESULTS_DUCKDB_VERSION = "1.5.5"
+
+# Name of the S3 secret created results DuckLake lives on S3.
+RESULTS_S3_SECRET = "results_s3"
+
 STORAGE_TYPES = ("duckdb", "ducklake")
 
 # Matches the timing line emitted by the DuckDB CLI when `.timer on` is set, e.g.
@@ -121,6 +129,8 @@ class BenchmarkConfig:
     answers: str
     results_ducklake: str
     results_data_path: Optional[str] = None
+    results_duckdb_version: str = DEFAULT_RESULTS_DUCKDB_VERSION
+    results_s3: Optional[dict] = None
     timeout: int = DEFAULT_TIMEOUT
     threads: Optional[int] = None
     memory_limit: Optional[str] = None
@@ -147,6 +157,9 @@ class BenchmarkConfig:
         results = raw["results"]
         if not isinstance(results, dict) or not results.get("ducklake"):
             raise ValueError("'results' must be a mapping with a 'ducklake' target")
+        results_s3 = results.get("s3")
+        if results_s3 is not None and not isinstance(results_s3, dict):
+            raise ValueError("'results.s3' must be a mapping of S3 settings (region, endpoint, ...)")
 
         timeout = raw.get("timeout", DEFAULT_TIMEOUT)
         if not isinstance(timeout, int) or timeout <= 0:
@@ -169,6 +182,8 @@ class BenchmarkConfig:
             answers=raw["answers"],
             results_ducklake=results["ducklake"],
             results_data_path=results.get("data_path"),
+            results_duckdb_version=results.get("duckdb_version", DEFAULT_RESULTS_DUCKDB_VERSION),
+            results_s3=results_s3,
             timeout=timeout,
             threads=threads,
             memory_limit=memory_limit,
@@ -221,6 +236,28 @@ class BenchmarkRunner:
         self.duckdb_binary = resolve_duckdb_binary(config.duckdb_binary)
         self.query_files = self.discover_queries()
         self.run_id = str(uuid.uuid4())
+        self._results_duckdb: Optional[str] = None
+
+    def results_duckdb(self) -> str:
+        if self._results_duckdb is None:
+            self._results_duckdb = resolve_duckdb_binary(self.config.results_duckdb_version)
+        return self._results_duckdb
+
+    def ensure_extensions(self, names: List[str]) -> None:
+        """Fail early with a clear message if the DuckDB version used for the results doesn't include an extension."""
+        listed = ", ".join(f"'{n}'" for n in names)
+        proc = subprocess.run(
+            [self.results_duckdb(), "-noheader", "-list", "-c",
+             f"SELECT extension_name FROM duckdb_extensions() WHERE extension_name IN ({listed});"],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+        )
+        available = set(proc.stdout.split())
+        missing = [n for n in names if n not in available]
+        if missing:
+            raise RuntimeError(
+                f"Extension(s) {', '.join(missing)} not available in the results DuckDB "
+                f"({self.config.results_duckdb_version}); choose a release that provides them."
+            )
 
     def duckdb_version(self) -> str:
         """The actual CLI version, parsed from `--version` (e.g. 'v1.5.4 (Variegata)
@@ -460,17 +497,34 @@ class BenchmarkRunner:
                 json.dump(self.query_records(results), f)
 
             script = self.results_load_script(runs_json, query_results_json)
+            # The subprocess inherits os.environ, so credentials reach DuckDB's 
+            # S3 credential_chain without extra wiring.
             proc = subprocess.run(
-                [self.duckdb_binary], input=script, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+                [self.results_duckdb()], input=script, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
             )
             if proc.returncode != 0:
                 raise RuntimeError(f"Failed to write results to DuckLake:\n{proc.stderr.strip()}")
         print(f"Wrote run {self.run_id} ({len(results)} queries) to DuckLake {self.config.results_ducklake}")
 
+    def s3_secret_setup(self) -> str:
+        """SQL to enable S3 access for an S3-backed results DuckLake: load httpfs and create
+        a secret that reads credentials from the environment."""
+        s3 = self.config.results_s3
+        if not s3:
+            return ""
+        options = ["TYPE s3", "PROVIDER credential_chain"]
+        for key in ("region", "endpoint", "url_style"):
+            if s3.get(key):
+                options.append(f"{key.upper()} '{s3[key]}'")
+        return (
+            "INSTALL httpfs;\nLOAD httpfs;\n"
+            f"CREATE OR REPLACE SECRET {RESULTS_S3_SECRET} ({', '.join(options)});\n"
+        )
+
     def results_load_script(self, runs_json: str, query_results_json: str) -> str:
         data_path = f" (DATA_PATH '{self.config.results_data_path}')" if self.config.results_data_path else ""
         return f"""
-INSTALL ducklake;
+{self.s3_secret_setup()}INSTALL ducklake;
 LOAD ducklake;
 ATTACH 'ducklake:{self.config.results_ducklake}' AS {RESULTS_ALIAS}{data_path};
 USE {RESULTS_ALIAS};
@@ -505,8 +559,12 @@ def main():
         print(f"Configuration error: {e}")
         sys.exit(1)
 
-    results = runner.run()
+    # Validate the results sink up front so a missing extension fails fast, before spending
+    # time on the benchmark.
+    required_extensions = ["ducklake", "httpfs"] if config.results_s3 else ["ducklake"]
     try:
+        runner.ensure_extensions(required_extensions)
+        results = runner.run()
         runner.write_results(results)
     except RuntimeError as e:
         print(e)
