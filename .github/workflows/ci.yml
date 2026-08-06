@@ -246,6 +246,7 @@ jobs:
           RUNNER_LINUX_X64: ${{ steps.detect.outputs.runner_linux_x64 }}
           RUNNER_LINUX_22_X64: ${{ steps.detect.outputs.runner_linux_22_x64 }}
           RUNNER_LINUX_ARM64: ${{ steps.detect.outputs.runner_linux_arm64 }}
+          RUNNER_LINUX_ARM64_SMALL: ${{ steps.detect.outputs.runner_linux_arm64_small }}
           RUNNER_WINDOWS_2022_X64: ${{ steps.detect.outputs.runner_windows_2022_x64 }}
           RUNNER_MACOS_ARM64: ${{ steps.detect.outputs.runner_macos_arm64 }}
           RUNNER_MACOS_14_ARM64: ${{ steps.detect.outputs.runner_macos_14_arm64 }}
@@ -258,6 +259,7 @@ jobs:
           [[ "${RUNNER_LINUX_X64}" == "namespace-profile-linux-x64" ]]
           [[ "${RUNNER_LINUX_22_X64}" == "namespace-profile-linux-22-x64" ]]
           [[ "${RUNNER_LINUX_ARM64}" == "namespace-profile-linux-arm64" ]]
+          [[ "${RUNNER_LINUX_ARM64_SMALL}" == "namespace-profile-linux-arm64-small" ]]
           [[ "${RUNNER_WINDOWS_2022_X64}" == "namespace-profile-windows-x64" ]]
           [[ "${RUNNER_MACOS_ARM64}" == "namespace-profile-macos-arm64" ]]
           [[ "${RUNNER_MACOS_14_ARM64}" == "namespace-profile-macos-14-arm64" ]]

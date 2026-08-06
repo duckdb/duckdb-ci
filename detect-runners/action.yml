@@ -14,6 +14,9 @@ outputs:
   runner_linux_arm64:
     description: "Runner label for Linux arm64 jobs"
     value: ${{ steps.config.outputs.runner_linux_arm64 }}
+  runner_linux_arm64_small:
+    description: "Runner label for small Linux arm64 jobs"
+    value: ${{ steps.config.outputs.runner_linux_arm64_small }}
   runner_windows_2022_x64:
     description: "Runner label for Windows 2022 x64 jobs"
     value: ${{ steps.config.outputs.runner_windows_2022_x64 }}
@@ -46,6 +49,7 @@ runs:
           runner_linux_x64=namespace-profile-linux-x64
           runner_linux_22_x64=namespace-profile-linux-22-x64
           runner_linux_arm64=namespace-profile-linux-arm64
+          runner_linux_arm64_small=namespace-profile-linux-arm64-small
           runner_windows_2022_x64=namespace-profile-windows-x64
           runner_macos_arm64=namespace-profile-macos-arm64
           runner_macos_14_arm64=namespace-profile-macos-14-arm64
@@ -55,6 +59,7 @@ runs:
           runner_linux_x64=ubuntu-latest
           runner_linux_22_x64=ubuntu-22.04
           runner_linux_arm64=ubuntu-24.04-arm
+          runner_linux_arm64_small=ubuntu-24.04-arm
           runner_windows_2022_x64=windows-2022
           runner_macos_arm64=macos-14
           runner_macos_14_arm64=macos-14
@@ -66,6 +71,7 @@ runs:
           echo "runner_linux_x64=$runner_linux_x64"
           echo "runner_linux_22_x64=$runner_linux_22_x64"
           echo "runner_linux_arm64=$runner_linux_arm64"
+          echo "runner_linux_arm64_small=$runner_linux_arm64_small"
           echo "runner_windows_2022_x64=$runner_windows_2022_x64"
           echo "runner_macos_arm64=$runner_macos_arm64"
           echo "runner_macos_14_arm64=$runner_macos_14_arm64"
