@@ -1,0 +1,79 @@
+name: "Matrix"
+description: "Compute DuckDB extension build matrices"
+
+inputs:
+  exclude_archs:
+    description: "Semicolon-separated duckdb_arch values to exclude"
+    required: false
+    default: ""
+  opt_in_archs:
+    description: "Semicolon-separated opt-in duckdb_arch values"
+    required: false
+    default: ""
+  runners:
+    description: "JSON object with runner labels keyed by duckdb_arch or runner alias"
+    required: false
+    default: "{}"
+  reduced_ci_mode:
+    description: "Reduced CI mode: disabled, enabled, or auto"
+    required: false
+    default: "auto"
+  image_version:
+    description: "Container image version tag"
+    required: false
+    default: ""
+  groups:
+    description: "YAML extension group configuration"
+    required: true
+
+outputs:
+  build_linux:
+    description: "Linux build job matrix"
+    value: ${{ steps.matrix.outputs.build_linux }}
+  test_linux:
+    description: "Linux test job matrix"
+    value: ${{ steps.matrix.outputs.test_linux }}
+  build_macos:
+    description: "macOS build job matrix"
+    value: ${{ steps.matrix.outputs.build_macos }}
+  test_macos:
+    description: "macOS test job matrix"
+    value: ${{ steps.matrix.outputs.test_macos }}
+  build_windows:
+    description: "Windows build job matrix"
+    value: ${{ steps.matrix.outputs.build_windows }}
+  test_windows:
+    description: "Windows test job matrix"
+    value: ${{ steps.matrix.outputs.test_windows }}
+  build_wasm:
+    description: "Wasm build job matrix"
+    value: ${{ steps.matrix.outputs.build_wasm }}
+  test_wasm:
+    description: "Wasm test job matrix"
+    value: ${{ steps.matrix.outputs.test_wasm }}
+
+runs:
+  using: "composite"
+  steps:
+    - id: matrix
+      name: Compute matrix
+      shell: bash
+      env:
+        EXCLUDED_ARCHS: ${{ inputs.exclude_archs }}
+        OPT_IN_ARCHS: ${{ inputs.opt_in_archs }}
+        RUNNERS: ${{ inputs.runners }}
+        REDUCED_CI_MODE: ${{ inputs.reduced_ci_mode }}
+        IMAGE_VERSION: ${{ inputs.image_version }}
+        GROUPS: ${{ inputs.groups }}
+      run: |
+        set -euo pipefail
+        export PYTHONPATH="${GITHUB_ACTION_PATH}/..${PYTHONPATH:+:${PYTHONPATH}}"
+        python3 -m matrix.main \
+          --extensions "${GITHUB_ACTION_PATH}/extensions.json" \
+          --exclude-archs "${EXCLUDED_ARCHS}" \
+          --opt-in-archs "${OPT_IN_ARCHS}" \
+          --runners "${RUNNERS}" \
+          --reduced-ci-mode "${REDUCED_CI_MODE}" \
+          --image-version "${IMAGE_VERSION}" \
+          --groups "${GROUPS}" \
+          --out "$GITHUB_OUTPUT"
