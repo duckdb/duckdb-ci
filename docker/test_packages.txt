@@ -1,0 +1,13 @@
+# Packages shared by all test images
+ca-certificates
+curl
+git
+jq
+python3 >= 3.12
+py3-pytest # alpine
+python3-pytest # manylinux
+tar
+unzip
+wget
+xz
+zip
