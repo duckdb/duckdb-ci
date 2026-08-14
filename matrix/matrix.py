@@ -37,6 +37,7 @@ class BuildJob:
     vcpkg_target_triplet: str
     vcpkg_host_triplet: str
     duckdb_arch: str
+    group_name: str
     prefix: str
     artifact_name: str
     exclude_archs: str
@@ -53,6 +54,7 @@ class BuildJob:
             "vcpkg_target_triplet": self.vcpkg_target_triplet,
             "vcpkg_host_triplet": self.vcpkg_host_triplet,
             "duckdb_arch": self.duckdb_arch,
+            "group_name": self.group_name,
             "artifact_prefix": self.prefix,
             "artifact_name": self.artifact_name,
             "exclude_archs": self.exclude_archs,
@@ -496,6 +498,7 @@ def build_job(
         vcpkg_target_triplet=str(entry["vcpkg_target_triplet"]),
         vcpkg_host_triplet=str(entry["vcpkg_host_triplet"]),
         duckdb_arch=duckdb_arch,
+        group_name=group.key,
         prefix=prefix,
         artifact_name=f"{prefix}-{duckdb_arch}",
         exclude_archs=effective_exclude_archs,
@@ -633,6 +636,7 @@ def _append_build_matrix_log(
     columns: list[tuple[str, Callable[[BuildJob], Any]]] = [
         ("duckdb_arch", lambda job: job.duckdb_arch),
         ("runner", lambda job: job.runner),
+        ("group_name", lambda job: job.group_name),
         ("artifact_prefix", lambda job: job.prefix),
         ("artifact_name", lambda job: job.artifact_name),
         ("vcpkg_target_triplet", lambda job: job.vcpkg_target_triplet),

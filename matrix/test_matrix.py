@@ -90,6 +90,10 @@ def test_pull_request_auto_enables_reduced_ci(tmp_path):
         "main-extensions",
         "rust-extensions",
     ]
+    assert [job.group_name for job in matrices.build.windows.includes] == [
+        "main",
+        "rust",
+    ]
     assert matrices.build.wasm.archs == ["wasm_eh"]
     assert matrices.test.wasm.archs == ["wasm_eh"]
     assert matrices.build.macos.includes == []
@@ -292,6 +296,7 @@ def test_group_expansion_exposes_toolchain_and_config_paths():
         arch="linux_amd64", prefix="external-extensions"
     )
     assert "extra_toolchains" not in main_job.to_dict()
+    assert main_job.to_dict()["group_name"] == "main"
     assert main_job.to_dict()["artifact_prefix"] == "main-extensions"
     assert "prefix" not in main_job.to_dict()
     assert main_job.toolchain == "main"
@@ -312,6 +317,24 @@ def test_group_expansion_exposes_toolchain_and_config_paths():
         for job in matrices.build.linux.includes
         if job.prefix == "rust-extensions"
     ]
+
+
+def test_group_name_preserves_raw_key_independently_of_artifact_prefix():
+    matrices = compute_matrices(
+        load_repo_config(),
+        groups="""main-cloud:
+  config: .github/config/in_tree_extensions.cmake
+  toolchain: main
+""",
+        reduced_ci_mode="enabled",
+    )
+
+    job = matrices.build.linux.get(
+        arch="linux_amd64", prefix="main-cloud-extensions"
+    )
+    assert job.group_name == "main-cloud"
+    assert job.to_dict()["group_name"] == "main-cloud"
+    assert job.to_dict()["artifact_prefix"] == "main-cloud-extensions"
 
 
 def test_artifact_names_match_one_deduplicated_test_row_per_arch():
@@ -388,6 +411,7 @@ def test_render_readable_matrix_log_includes_tables_details_and_empty_platforms(
     matrices.build.linux.includes.append(
         BuildJob(
             duckdb_arch="linux_amd64",
+            group_name="main",
             prefix="main-extensions",
             artifact_name="main-extensions-linux_amd64",
             runner=["ubuntu-24.04"],
@@ -419,6 +443,7 @@ def test_render_readable_matrix_log_includes_tables_details_and_empty_platforms(
     matrices.build.macos.includes.append(
         BuildJob(
             duckdb_arch="osx_arm64",
+            group_name="main",
             prefix="main-extensions",
             artifact_name="main-extensions-osx_arm64",
             runner=["macos-15"],
@@ -455,6 +480,7 @@ def test_render_readable_matrix_log_includes_tables_details_and_empty_platforms(
     assert "test_wasm (0 jobs)\n  No jobs" in output
     assert "#  duckdb_arch" in output
     assert "linux_amd64" in output
+    assert "group_name" in output
     assert "main-extensions" in output
     assert "main-extensions-linux_amd64" in output
     assert "*-extensions-linux_amd64" in output
