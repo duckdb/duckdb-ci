@@ -218,6 +218,7 @@ def test_linux_container_fields_use_fixed_image_owner_without_suffix(tmp_path):
     matrices = compute_core_matrices(
         load_repo_config(),
         image_version="20260528-fbcf3036",
+        opt_in_archs="linux_arm64_musl",
         reduced_ci_mode="disabled",
     )
 
@@ -229,9 +230,14 @@ def test_linux_container_fields_use_fixed_image_owner_without_suffix(tmp_path):
     )
     assert rust_job.container_name == "manylinux_2_28_aarch64_rust"
     linux_test = matrices.test.linux.get(arch="linux_arm64")
-    assert linux_test.container_name == "manylinux_2_28_aarch64_main"
+    assert linux_test.container_name == "manylinux_2_28_aarch64_test"
     assert linux_test.container == (
-        "ghcr.io/duckdb/duckdb-ci/manylinux_2_28_aarch64_main:20260528-fbcf3036"
+        "ghcr.io/duckdb/duckdb-ci/manylinux_2_28_aarch64_test:20260528-fbcf3036"
+    )
+    alpine_test = matrices.test.linux.get(arch="linux_arm64_musl")
+    assert alpine_test.container_name == "alpine_3_22_aarch64_test"
+    assert alpine_test.container == (
+        "ghcr.io/duckdb/duckdb-ci/alpine_3_22_aarch64_test:20260528-fbcf3036"
     )
 
 
@@ -332,7 +338,7 @@ def test_artifact_names_match_one_deduplicated_test_row_per_arch():
     assert test_jobs == [
         MatrixTestJob(
             artifact_pattern="*-extensions-linux_arm64",
-            container_name="manylinux_2_28_aarch64_main",
+            container_name="manylinux_2_28_aarch64_test",
             duckdb_arch="linux_arm64",
             runner=["ubuntu-24.04-arm"],
             toolchains=("main", "rust"),
@@ -403,8 +409,8 @@ def test_render_readable_matrix_log_includes_tables_details_and_empty_platforms(
             duckdb_arch="linux_amd64",
             artifact_pattern="*-extensions-linux_amd64",
             runner=["ubuntu-24.04"],
-            container_name="manylinux_2_28_amd64_main",
-            container="ghcr.io/duckdb/duckdb-ci/manylinux_2_28_amd64_main:20260528-fbcf3036",
+            container_name="manylinux_2_28_amd64_test",
+            container="ghcr.io/duckdb/duckdb-ci/manylinux_2_28_amd64_test:20260528-fbcf3036",
             toolchains=("main",),
             vcpkg_target_triplet="x64-linux-release",
             vcpkg_host_triplet="x64-linux-release",

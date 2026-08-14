@@ -27,7 +27,7 @@ CCACHE_VERSION="${CCACHE_VERSION:-4.13.5}"
 VCPKG_COMMIT="${VCPKG_COMMIT:-84bab45d415d22042bd0b9081aea57f362da3f35}"
 REPO_PREFIX="${REPO_PREFIX:-duckdb-ci}"
 IMAGE_SUFFIX="${IMAGE_SUFFIX:-}"
-TOOLCHAINS_INPUT="${TOOLCHAINS:-cpp main rust cuda}"
+TOOLCHAINS_INPUT="${TOOLCHAINS:-cpp test main rust cuda}"
 read -r -a TOOLCHAINS <<< "${TOOLCHAINS_INPUT}"
 
 build_image() {
@@ -56,6 +56,9 @@ build_toolchain() {
 				--build-arg "CMAKE_VERSION=${CMAKE_VERSION}" \
 				--build-arg "CCACHE_VERSION=${CCACHE_VERSION}" \
 				--build-arg "VCPKG_COMMIT=${VCPKG_COMMIT}"
+			;;
+		test)
+			build_image "${repo}" "${root}/test/Dockerfile" "."
 			;;
 		rust)
 			build_image \

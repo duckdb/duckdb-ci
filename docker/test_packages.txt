@@ -1,0 +1,3 @@
+# Packages shared by all test images
+py3-pytest # alpine
+python3-pytest # manylinux

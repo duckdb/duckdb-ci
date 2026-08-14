@@ -519,7 +519,7 @@ def test_job(
     container_name: str | None = None
     container: str | None = None
     if duckdb_arch.startswith("linux_"):
-        test_toolchain = "cuda" if "cuda" in toolchains else "main"
+        test_toolchain = "cuda" if "cuda" in toolchains else "test"
         container_name = linux_container_name(duckdb_arch, test_toolchain)
         if image_version:
             container = f"ghcr.io/duckdb/duckdb-ci/{container_name}:{image_version}"

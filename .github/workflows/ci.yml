@@ -111,6 +111,12 @@ jobs:
           docker push "${cpp_image}"
           echo "${cpp_image}" >> "${pushed_images_file}"
 
+          # Test images are independent of the build toolchain images.
+          IMAGE_SUFFIX="${IMAGE_SUFFIX}" TOOLCHAINS="test" "./docker/${{ matrix.distro }}/build.sh" "${{ matrix.arch }}"
+          test_image="${REPO_PREFIX}/${{ matrix.distro }}_${{ matrix.arch }}_test${IMAGE_SUFFIX}:${IMAGE_VERSION}"
+          docker push "${test_image}"
+          echo "${test_image}" >> "${pushed_images_file}"
+
           # Push main before building rust so remote builders can pull main as the rust base image.
           IMAGE_SUFFIX="${IMAGE_SUFFIX}" TOOLCHAINS="main" "./docker/${{ matrix.distro }}/build.sh" "${{ matrix.arch }}"
           main_image="${REPO_PREFIX}/${{ matrix.distro }}_${{ matrix.arch }}_main${IMAGE_SUFFIX}:${IMAGE_VERSION}"
