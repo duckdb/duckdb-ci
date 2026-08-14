@@ -147,7 +147,7 @@ def test_default_groups_parse_in_sorted_order():
     )
 
 
-def test_group_yaml_parser_accepts_scalar_config_and_rejects_unknown_fields():
+def test_group_yaml_parser_accepts_scalar_config_and_rejects_invalid_fields():
     groups = parse_groups(
         """custom:
   config: custom.cmake
@@ -166,6 +166,14 @@ def test_group_yaml_parser_accepts_scalar_config_and_rejects_unknown_fields():
   config: custom.cmake
   unknown: value
   toolchain: main
+"""
+        )
+
+    with pytest.raises(MatrixError, match="unsupported toolchain"):
+        parse_groups(
+            """custom:
+  config: custom.cmake
+  toolchain: unsupported
 """
         )
 
@@ -227,15 +235,49 @@ def test_linux_container_fields_use_fixed_image_owner_without_suffix(tmp_path):
     )
 
 
-def test_group_expansion_and_config_loading(tmp_path, monkeypatch):
-    config_dir = tmp_path / ".github" / "config"
-    config_dir.mkdir(parents=True)
-    (config_dir / "in_tree_extensions.cmake").write_text("set(IN_TREE 1)\n", encoding="utf-8")
-    (config_dir / "out_of_tree_extensions.cmake").write_text("set(OUT_OF_TREE 1)\n", encoding="utf-8")
-    (config_dir / "rust_based_extensions.cmake").write_text("set(RUST 1)\n", encoding="utf-8")
-    (config_dir / "external_extensions.cmake").write_text("set(EXTERNAL 1)\n", encoding="utf-8")
+def test_cuda_builds_select_cuda_test_container_and_aggregate_toolchains():
+    matrices = compute_matrices(
+        load_repo_config(),
+        groups="""cuda:
+  config: .github/config/cuda_extensions.cmake
+  default_exclude_archs: linux_amd64_musl;linux_arm64_musl;osx_amd64;osx_arm64;windows_amd64;windows_arm64;windows_amd64_mingw;wasm_mvp;wasm_eh;wasm_threads
+  toolchain: cuda
+main:
+  config: .github/config/in_tree_extensions.cmake
+  toolchain: main
+""",
+        image_version="20260528-fbcf3036",
+        reduced_ci_mode="disabled",
+    )
 
-    monkeypatch.chdir(tmp_path)
+    cuda_build = matrices.build.linux.get(
+        arch="linux_amd64", prefix="cuda-extensions"
+    )
+    assert cuda_build.container_name == "manylinux_2_28_amd64_cuda"
+    linux_test = matrices.test.linux.get(arch="linux_amd64")
+    assert linux_test.toolchains == ("cuda", "main")
+    assert linux_test.container_name == "manylinux_2_28_amd64_cuda"
+    assert linux_test.container == (
+        "ghcr.io/duckdb/duckdb-ci/manylinux_2_28_amd64_cuda:20260528-fbcf3036"
+    )
+
+
+def test_cuda_toolchain_rejects_unsupported_architectures():
+    with pytest.raises(
+        MatrixError,
+        match="cuda toolchain does not support architecture 'osx_amd64'",
+    ):
+        compute_matrices(
+            load_repo_config(),
+            groups="""cuda:
+  config: .github/config/cuda_extensions.cmake
+  toolchain: cuda
+""",
+            reduced_ci_mode="disabled",
+        )
+
+
+def test_group_expansion_exposes_toolchain_and_config_paths():
     matrices = compute_core_matrices(load_repo_config(), reduced_ci_mode="disabled")
 
     main_job = matrices.build.linux.get(arch="linux_amd64", prefix="main-extensions")
@@ -246,9 +288,19 @@ def test_group_expansion_and_config_loading(tmp_path, monkeypatch):
     assert "extra_toolchains" not in main_job.to_dict()
     assert main_job.to_dict()["artifact_prefix"] == "main-extensions"
     assert "prefix" not in main_job.to_dict()
-    assert main_job.extension_config == "set(IN_TREE 1)\n\nset(OUT_OF_TREE 1)"
-    assert rust_job.extension_config == "set(RUST 1)"
-    assert external_job.extension_config == "set(EXTERNAL 1)"
+    assert main_job.toolchain == "main"
+    assert main_job.extension_config_paths == (
+        ".github/config/in_tree_extensions.cmake",
+        ".github/config/out_of_tree_extensions.cmake",
+    )
+    assert rust_job.toolchain == "rust"
+    assert rust_job.extension_config_paths == (
+        ".github/config/rust_based_extensions.cmake",
+    )
+    assert external_job.toolchain == "main"
+    assert external_job.extension_config_paths == (
+        ".github/config/external_extensions.cmake",
+    )
     assert "linux_amd64_musl" not in [
         job.duckdb_arch
         for job in matrices.build.linux.includes
@@ -283,6 +335,9 @@ def test_artifact_names_match_one_deduplicated_test_row_per_arch():
             container_name="manylinux_2_28_aarch64_main",
             duckdb_arch="linux_arm64",
             runner=["ubuntu-24.04-arm"],
+            toolchains=("main", "rust"),
+            vcpkg_host_triplet="arm64-linux-release",
+            vcpkg_target_triplet="arm64-linux-release",
         )
     ]
 
@@ -334,7 +389,11 @@ def test_render_readable_matrix_log_includes_tables_details_and_empty_platforms(
             vcpkg_host_triplet="x64-linux-release",
             container_name="manylinux_2_28_amd64_main",
             container="ghcr.io/duckdb/duckdb-ci/manylinux_2_28_amd64_main:20260528-fbcf3036",
-            extension_config="set(IN_TREE 1)\n\nset(OUT_OF_TREE 1)",
+            toolchain="main",
+            extension_config_paths=(
+                ".github/config/in_tree_extensions.cmake",
+                ".github/config/out_of_tree_extensions.cmake",
+            ),
             exclude_archs="wasm_mvp;wasm_eh",
             opt_in_archs="",
         )
@@ -346,6 +405,9 @@ def test_render_readable_matrix_log_includes_tables_details_and_empty_platforms(
             runner=["ubuntu-24.04"],
             container_name="manylinux_2_28_amd64_main",
             container="ghcr.io/duckdb/duckdb-ci/manylinux_2_28_amd64_main:20260528-fbcf3036",
+            toolchains=("main",),
+            vcpkg_target_triplet="x64-linux-release",
+            vcpkg_host_triplet="x64-linux-release",
         )
     )
     matrices.build.macos.includes.append(
@@ -357,7 +419,8 @@ def test_render_readable_matrix_log_includes_tables_details_and_empty_platforms(
             vcpkg_target_triplet="arm64-osx-release",
             vcpkg_host_triplet="arm64-osx-release",
             osx_build_arch="arm64",
-            extension_config="",
+            toolchain="main",
+            extension_config_paths=(".github/config/in_tree_extensions.cmake",),
             exclude_archs="",
             opt_in_archs="osx_arm64",
         )
@@ -368,6 +431,9 @@ def test_render_readable_matrix_log_includes_tables_details_and_empty_platforms(
             artifact_pattern="*-extensions-osx_arm64",
             runner=["macos-15"],
             osx_build_arch="arm64",
+            toolchains=("main",),
+            vcpkg_target_triplet="arm64-osx-release",
+            vcpkg_host_triplet="arm64-osx-release",
         )
     )
 
@@ -391,9 +457,7 @@ def test_render_readable_matrix_log_includes_tables_details_and_empty_platforms(
     assert "manylinux_2_28_amd64_main" in output
     assert "osx_build_arch" in output
     assert "  Job 1:" in output
-    assert "    extension_config:" in output
-    assert "      set(IN_TREE 1)" in output
-    assert "      \n      set(OUT_OF_TREE 1)" in output
+    assert "    extension_config_paths: .github/config/in_tree_extensions.cmake,.github/config/out_of_tree_extensions.cmake" in output
     assert "    exclude_archs: wasm_mvp;wasm_eh" in output
     assert "    opt_in_archs: <empty>" in output
     assert (

@@ -41,7 +41,8 @@ class BuildJob:
     artifact_name: str
     exclude_archs: str
     opt_in_archs: str
-    extension_config: str
+    toolchain: str
+    extension_config_paths: tuple[str, ...]
     osx_build_arch: str | None = None
     container_name: str | None = None
     container: str | None = None
@@ -56,7 +57,8 @@ class BuildJob:
             "artifact_name": self.artifact_name,
             "exclude_archs": self.exclude_archs,
             "opt_in_archs": self.opt_in_archs,
-            "extension_config": self.extension_config,
+            "toolchain": self.toolchain,
+            "extension_config_paths": list(self.extension_config_paths),
         }
         if self.osx_build_arch is not None:
             result["osx_build_arch"] = self.osx_build_arch
@@ -72,6 +74,9 @@ class TestJob:
     runner: list[str]
     duckdb_arch: str
     artifact_pattern: str
+    vcpkg_target_triplet: str
+    vcpkg_host_triplet: str
+    toolchains: tuple[str, ...]
     osx_build_arch: str | None = None
     container_name: str | None = None
     container: str | None = None
@@ -85,6 +90,9 @@ class TestJob:
             "runner": self.runner,
             "duckdb_arch": self.duckdb_arch,
             "artifact_pattern": self.artifact_pattern,
+            "vcpkg_target_triplet": self.vcpkg_target_triplet,
+            "vcpkg_host_triplet": self.vcpkg_host_triplet,
+            "toolchains": list(self.toolchains),
         }
         if self.osx_build_arch is not None:
             result["osx_build_arch"] = self.osx_build_arch
@@ -383,6 +391,9 @@ def parse_groups(raw: str | None) -> tuple[ExtensionGroup, ...]:
         toolchain = config["toolchain"]
         if not isinstance(toolchain, str) or not toolchain:
             raise MatrixError(f"group {key!r} toolchain must be a non-empty string")
+        supported_toolchains = {"main", "rust", "cuda"}
+        if toolchain not in supported_toolchains:
+            raise MatrixError(f"group {key!r} has unsupported toolchain: {toolchain!r}")
         for field in ("default_exclude_archs", "opt_in_archs"):
             value = config.get(field)
             if value is not None and not isinstance(value, str):
@@ -436,17 +447,6 @@ def resolve_runner(entry: dict[str, Any], overrides: dict[str, list[str]]) -> li
     return [entry["runner"]]
 
 
-def load_group_config(group: ExtensionGroup) -> str:
-    parts: list[str] = []
-    for relative_path in group.config_paths:
-        path = Path(relative_path)
-        if not path.is_absolute():
-            path = Path.cwd() / path
-        if path.exists():
-            parts.append(path.read_text(encoding="utf-8").rstrip("\n"))
-    return "\n\n".join(part for part in parts if part)
-
-
 def include_entry(entry: dict[str, Any], excluded: set[str], opt_in: set[str], reduced_ci: bool) -> bool:
     duckdb_arch = entry["duckdb_arch"]
     if duckdb_arch in excluded:
@@ -476,10 +476,13 @@ def build_job(
     runner: list[str],
     effective_exclude_archs: str,
     effective_opt_in_archs: str,
-    extension_config: str,
     image_version: str,
 ) -> BuildJob:
     duckdb_arch = str(entry["duckdb_arch"])
+    if group.toolchain == "cuda" and (
+        not duckdb_arch.startswith("linux_") or duckdb_arch.endswith("_musl")
+    ):
+        raise MatrixError(f"cuda toolchain does not support architecture {duckdb_arch!r}")
     prefix = f"{group.key}-extensions"
     osx_build_arch = str(entry["osx_build_arch"]) if "osx_build_arch" in entry else None
     container_name: str | None = None
@@ -497,7 +500,8 @@ def build_job(
         artifact_name=f"{prefix}-{duckdb_arch}",
         exclude_archs=effective_exclude_archs,
         opt_in_archs=effective_opt_in_archs,
-        extension_config=extension_config,
+        toolchain=group.toolchain,
+        extension_config_paths=group.config_paths,
         osx_build_arch=osx_build_arch,
         container_name=container_name,
         container=container,
@@ -507,6 +511,7 @@ def build_job(
 def test_job(
     entry: dict[str, Any],
     runner: list[str],
+    toolchains: tuple[str, ...],
     image_version: str,
 ) -> TestJob:
     duckdb_arch = str(entry["duckdb_arch"])
@@ -514,13 +519,17 @@ def test_job(
     container_name: str | None = None
     container: str | None = None
     if duckdb_arch.startswith("linux_"):
-        container_name = linux_container_name(duckdb_arch, "main")
+        test_toolchain = "cuda" if "cuda" in toolchains else "main"
+        container_name = linux_container_name(duckdb_arch, test_toolchain)
         if image_version:
             container = f"ghcr.io/duckdb/duckdb-ci/{container_name}:{image_version}"
     return TestJob(
         runner=runner,
         duckdb_arch=duckdb_arch,
         artifact_pattern=f"*-extensions-{duckdb_arch}",
+        vcpkg_target_triplet=str(entry["vcpkg_target_triplet"]),
+        vcpkg_host_triplet=str(entry["vcpkg_host_triplet"]),
+        toolchains=toolchains,
         osx_build_arch=osx_build_arch,
         container_name=container_name,
         container=container,
@@ -548,7 +557,7 @@ def compute_matrices(
             raise MatrixError(f"missing platform in extensions.json: {config_key}")
         entries = extensions[config_key]["include"]
         build_output = result.build.for_platform(output_platform).includes
-        test_entries: dict[str, tuple[dict[str, Any], list[str]]] = {}
+        test_entries: dict[str, tuple[dict[str, Any], list[str], set[str]]] = {}
         for group in extension_groups:
             effective_exclude_archs = combine_lists(group.default_exclude_archs, exclude_archs)
             if group.opt_in_archs is not None:
@@ -559,7 +568,6 @@ def compute_matrices(
                 effective_opt_in_archs = ""
             excluded = set(split_list(effective_exclude_archs))
             opt_in = set(split_list(effective_opt_in_archs))
-            extension_config = load_group_config(group)
             for entry in entries:
                 if not include_entry(entry, excluded, opt_in, reduced_ci):
                     continue
@@ -571,18 +579,20 @@ def compute_matrices(
                         runner,
                         effective_exclude_archs,
                         effective_opt_in_archs,
-                        extension_config,
                         image_version,
                     )
                 )
-                test_entries.setdefault(str(entry["duckdb_arch"]), (entry, runner))
+                duckdb_arch = str(entry["duckdb_arch"])
+                if duckdb_arch not in test_entries:
+                    test_entries[duckdb_arch] = (entry, runner, set())
+                test_entries[duckdb_arch][2].add(group.toolchain)
         build_output.sort(
             key=lambda job: (job.duckdb_arch, job.prefix)
         )
         test_output = result.test.for_platform(output_platform).includes
         test_output.extend(
-            test_job(entry, runner, image_version)
-            for entry, runner in test_entries.values()
+            test_job(entry, runner, tuple(sorted(toolchains)), image_version)
+            for entry, runner, toolchains in test_entries.values()
         )
         test_output.sort(key=lambda job: job.duckdb_arch)
     return result
@@ -627,6 +637,7 @@ def _append_build_matrix_log(
         ("artifact_name", lambda job: job.artifact_name),
         ("vcpkg_target_triplet", lambda job: job.vcpkg_target_triplet),
         ("vcpkg_host_triplet", lambda job: job.vcpkg_host_triplet),
+        ("toolchain", lambda job: job.toolchain),
     ]
     if any(job.container_name for job in matrix.includes):
         columns.append(("container_name", lambda job: job.container_name))
@@ -634,7 +645,12 @@ def _append_build_matrix_log(
         columns.append(("osx_build_arch", lambda job: job.osx_build_arch))
 
     def append_details(detail_lines: list[str], job: BuildJob) -> None:
-        _append_detail(detail_lines, "extension_config", job.extension_config, indent="    ")
+        _append_detail(
+            detail_lines,
+            "extension_config_paths",
+            list(job.extension_config_paths),
+            indent="    ",
+        )
         _append_detail(detail_lines, "exclude_archs", job.exclude_archs, indent="    ")
         _append_detail(detail_lines, "opt_in_archs", job.opt_in_archs, indent="    ")
         _append_detail(detail_lines, "container", job.container, indent="    ")
@@ -651,6 +667,9 @@ def _append_test_matrix_log(
         ("duckdb_arch", lambda job: job.duckdb_arch),
         ("runner", lambda job: job.runner),
         ("artifact_pattern", lambda job: job.artifact_pattern),
+        ("vcpkg_target_triplet", lambda job: job.vcpkg_target_triplet),
+        ("vcpkg_host_triplet", lambda job: job.vcpkg_host_triplet),
+        ("toolchains", lambda job: list(job.toolchains)),
     ]
     if any(job.container_name for job in matrix.includes):
         columns.append(("container_name", lambda job: job.container_name))
