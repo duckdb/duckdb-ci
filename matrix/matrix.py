@@ -79,6 +79,7 @@ class TestJob:
     vcpkg_target_triplet: str
     vcpkg_host_triplet: str
     toolchains: tuple[str, ...]
+    extension_config_paths: tuple[str, ...]
     osx_build_arch: str | None = None
     container_name: str | None = None
     container: str | None = None
@@ -95,6 +96,7 @@ class TestJob:
             "vcpkg_target_triplet": self.vcpkg_target_triplet,
             "vcpkg_host_triplet": self.vcpkg_host_triplet,
             "toolchains": list(self.toolchains),
+            "extension_config_paths": list(self.extension_config_paths),
         }
         if self.osx_build_arch is not None:
             result["osx_build_arch"] = self.osx_build_arch
@@ -515,6 +517,7 @@ def test_job(
     entry: dict[str, Any],
     runner: list[str],
     toolchains: tuple[str, ...],
+    extension_config_paths: tuple[str, ...],
     image_version: str,
 ) -> TestJob:
     duckdb_arch = str(entry["duckdb_arch"])
@@ -522,8 +525,7 @@ def test_job(
     container_name: str | None = None
     container: str | None = None
     if duckdb_arch.startswith("linux_"):
-        test_toolchain = "cuda" if "cuda" in toolchains else "test"
-        container_name = linux_container_name(duckdb_arch, test_toolchain)
+        container_name = linux_container_name(duckdb_arch, "main")
         if image_version:
             container = f"ghcr.io/duckdb/duckdb-ci/{container_name}:{image_version}"
     return TestJob(
@@ -533,6 +535,7 @@ def test_job(
         vcpkg_target_triplet=str(entry["vcpkg_target_triplet"]),
         vcpkg_host_triplet=str(entry["vcpkg_host_triplet"]),
         toolchains=toolchains,
+        extension_config_paths=extension_config_paths,
         osx_build_arch=osx_build_arch,
         container_name=container_name,
         container=container,
@@ -560,7 +563,9 @@ def compute_matrices(
             raise MatrixError(f"missing platform in extensions.json: {config_key}")
         entries = extensions[config_key]["include"]
         build_output = result.build.for_platform(output_platform).includes
-        test_entries: dict[str, tuple[dict[str, Any], list[str], set[str]]] = {}
+        test_entries: dict[
+            str, tuple[dict[str, Any], list[str], set[str], list[str], set[str]]
+        ] = {}
         for group in extension_groups:
             effective_exclude_archs = combine_lists(group.default_exclude_archs, exclude_archs)
             if group.opt_in_archs is not None:
@@ -587,15 +592,27 @@ def compute_matrices(
                 )
                 duckdb_arch = str(entry["duckdb_arch"])
                 if duckdb_arch not in test_entries:
-                    test_entries[duckdb_arch] = (entry, runner, set())
+                    test_entries[duckdb_arch] = (entry, runner, set(), [], set())
                 test_entries[duckdb_arch][2].add(group.toolchain)
+                config_paths = test_entries[duckdb_arch][3]
+                seen_config_paths = test_entries[duckdb_arch][4]
+                for config_path in group.config_paths:
+                    if config_path not in seen_config_paths:
+                        config_paths.append(config_path)
+                        seen_config_paths.add(config_path)
         build_output.sort(
             key=lambda job: (job.duckdb_arch, job.prefix)
         )
         test_output = result.test.for_platform(output_platform).includes
         test_output.extend(
-            test_job(entry, runner, tuple(sorted(toolchains)), image_version)
-            for entry, runner, toolchains in test_entries.values()
+            test_job(
+                entry,
+                runner,
+                tuple(sorted(toolchains)),
+                tuple(config_paths),
+                image_version,
+            )
+            for entry, runner, toolchains, config_paths, _ in test_entries.values()
         )
         test_output.sort(key=lambda job: job.duckdb_arch)
     return result
@@ -681,6 +698,12 @@ def _append_test_matrix_log(
         columns.append(("osx_build_arch", lambda job: job.osx_build_arch))
 
     def append_details(detail_lines: list[str], job: TestJob) -> None:
+        _append_detail(
+            detail_lines,
+            "extension_config_paths",
+            list(job.extension_config_paths),
+            indent="    ",
+        )
         _append_detail(detail_lines, "container", job.container, indent="    ")
 
     _append_matrix_log(lines, output_key, matrix.includes, columns, append_details)

@@ -234,14 +234,14 @@ def test_linux_container_fields_use_fixed_image_owner_without_suffix(tmp_path):
     )
     assert rust_job.container_name == "manylinux_2_28_aarch64_rust"
     linux_test = matrices.test.linux.get(arch="linux_arm64")
-    assert linux_test.container_name == "manylinux_2_28_aarch64_test"
+    assert linux_test.container_name == "manylinux_2_28_aarch64_main"
     assert linux_test.container == (
-        "ghcr.io/duckdb/duckdb-ci/manylinux_2_28_aarch64_test:20260528-fbcf3036"
+        "ghcr.io/duckdb/duckdb-ci/manylinux_2_28_aarch64_main:20260528-fbcf3036"
     )
     alpine_test = matrices.test.linux.get(arch="linux_arm64_musl")
-    assert alpine_test.container_name == "alpine_3_22_aarch64_test"
+    assert alpine_test.container_name == "alpine_3_22_aarch64_main"
     assert alpine_test.container == (
-        "ghcr.io/duckdb/duckdb-ci/alpine_3_22_aarch64_test:20260528-fbcf3036"
+        "ghcr.io/duckdb/duckdb-ci/alpine_3_22_aarch64_main:20260528-fbcf3036"
     )
 
 
@@ -266,9 +266,9 @@ main:
     assert cuda_build.container_name == "manylinux_2_28_amd64_cuda"
     linux_test = matrices.test.linux.get(arch="linux_amd64")
     assert linux_test.toolchains == ("cuda", "main")
-    assert linux_test.container_name == "manylinux_2_28_amd64_cuda"
+    assert linux_test.container_name == "manylinux_2_28_amd64_main"
     assert linux_test.container == (
-        "ghcr.io/duckdb/duckdb-ci/manylinux_2_28_amd64_cuda:20260528-fbcf3036"
+        "ghcr.io/duckdb/duckdb-ci/manylinux_2_28_amd64_main:20260528-fbcf3036"
     )
 
 
@@ -312,11 +312,51 @@ def test_group_expansion_exposes_toolchain_and_config_paths():
     assert external_job.extension_config_paths == (
         ".github/config/external_extensions.cmake",
     )
+    assert matrices.test.linux.get(arch="linux_amd64").extension_config_paths == (
+        ".github/config/external_extensions.cmake",
+        ".github/config/in_tree_extensions.cmake",
+        ".github/config/out_of_tree_extensions.cmake",
+        ".github/config/rust_based_extensions.cmake",
+    )
+    assert matrices.test.windows.get(arch="windows_amd64").extension_config_paths == (
+        ".github/config/in_tree_extensions.cmake",
+        ".github/config/out_of_tree_extensions.cmake",
+        ".github/config/rust_based_extensions.cmake",
+    )
     assert "linux_amd64_musl" not in [
         job.duckdb_arch
         for job in matrices.build.linux.includes
         if job.prefix == "rust-extensions"
     ]
+
+
+def test_test_config_paths_are_ordered_deduplicated_and_arch_specific():
+    matrices = compute_matrices(
+        load_repo_config(),
+        groups="""first:
+  config:
+    - shared.cmake
+    - first.cmake
+  toolchain: main
+second:
+  config:
+    - shared.cmake
+    - second.cmake
+  default_exclude_archs: linux_arm64
+  toolchain: main
+""",
+        reduced_ci_mode="disabled",
+    )
+
+    assert matrices.test.linux.get(arch="linux_amd64").extension_config_paths == (
+        "shared.cmake",
+        "first.cmake",
+        "second.cmake",
+    )
+    assert matrices.test.linux.get(arch="linux_arm64").extension_config_paths == (
+        "shared.cmake",
+        "first.cmake",
+    )
 
 
 def test_group_name_preserves_raw_key_independently_of_artifact_prefix():
@@ -361,8 +401,14 @@ def test_artifact_names_match_one_deduplicated_test_row_per_arch():
     assert test_jobs == [
         MatrixTestJob(
             artifact_pattern="*-extensions-linux_arm64",
-            container_name="manylinux_2_28_aarch64_test",
+            container_name="manylinux_2_28_aarch64_main",
             duckdb_arch="linux_arm64",
+            extension_config_paths=(
+                ".github/config/external_extensions.cmake",
+                ".github/config/in_tree_extensions.cmake",
+                ".github/config/out_of_tree_extensions.cmake",
+                ".github/config/rust_based_extensions.cmake",
+            ),
             runner=["ubuntu-24.04-arm"],
             toolchains=("main", "rust"),
             vcpkg_host_triplet="arm64-linux-release",
@@ -433,8 +479,12 @@ def test_render_readable_matrix_log_includes_tables_details_and_empty_platforms(
             duckdb_arch="linux_amd64",
             artifact_pattern="*-extensions-linux_amd64",
             runner=["ubuntu-24.04"],
-            container_name="manylinux_2_28_amd64_test",
-            container="ghcr.io/duckdb/duckdb-ci/manylinux_2_28_amd64_test:20260528-fbcf3036",
+            container_name="manylinux_2_28_amd64_main",
+            container="ghcr.io/duckdb/duckdb-ci/manylinux_2_28_amd64_main:20260528-fbcf3036",
+            extension_config_paths=(
+                ".github/config/in_tree_extensions.cmake",
+                ".github/config/out_of_tree_extensions.cmake",
+            ),
             toolchains=("main",),
             vcpkg_target_triplet="x64-linux-release",
             vcpkg_host_triplet="x64-linux-release",
@@ -462,6 +512,7 @@ def test_render_readable_matrix_log_includes_tables_details_and_empty_platforms(
             artifact_pattern="*-extensions-osx_arm64",
             runner=["macos-15"],
             osx_build_arch="arm64",
+            extension_config_paths=(".github/config/in_tree_extensions.cmake",),
             toolchains=("main",),
             vcpkg_target_triplet="arm64-osx-release",
             vcpkg_host_triplet="arm64-osx-release",
