@@ -62,3 +62,11 @@ runs:
         GIT_CONFIG_COUNT: 1
         GIT_CONFIG_KEY_0: checkout.workers
         GIT_CONFIG_VALUE_0: 4
+
+    - name: Mark repository as safe
+      shell: bash
+      env:
+        CHECKOUT_PATH: ${{ inputs.path }}
+      run: |
+        checkout_path="$(cd "$GITHUB_WORKSPACE/$CHECKOUT_PATH" && pwd -P)"
+        git config --global --add safe.directory "$checkout_path"
