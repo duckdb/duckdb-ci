@@ -27,8 +27,9 @@ COPY docker/packages.py /usr/local/bin/packages.py
 
 RUN set -eux; \
     apk add --no-cache python3 libstdc++; \
-    test_packages="$(python3 /usr/local/bin/packages.py list --distro alpine --packages-file /tmp/test_packages.txt)"; \
+    ln -sf python3 /usr/bin/python; \
+    test_packages="$(python /usr/local/bin/packages.py list --distro alpine --packages-file /tmp/test_packages.txt)"; \
     apk add --no-cache \
       ${test_packages}; \
-    python3 /usr/local/bin/packages.py check --distro alpine --packages-file /tmp/test_packages.txt; \
+    python /usr/local/bin/packages.py check --distro alpine --packages-file /tmp/test_packages.txt; \
     sed -i "s:ID=alpine:ID=NotpineForGHA:" /etc/os-release

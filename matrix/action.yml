@@ -68,7 +68,7 @@ runs:
       run: |
         set -euo pipefail
         export PYTHONPATH="${GITHUB_ACTION_PATH}/..${PYTHONPATH:+:${PYTHONPATH}}"
-        python3 -m matrix.main \
+        python -m matrix.main \
           --extensions "${GITHUB_ACTION_PATH}/extensions.json" \
           --exclude-archs "${EXCLUDED_ARCHS}" \
           --opt-in-archs "${OPT_IN_ARCHS}" \

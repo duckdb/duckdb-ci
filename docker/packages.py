@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 """Filter distro-specific package lists and verify installed tooling."""
 
 from __future__ import annotations
@@ -27,7 +27,7 @@ class ToolCheck:
 
 TOOL_CHECKS: dict[str, ToolCheck] = {
     "python3": ToolCheck(
-        cmd="python3 --version",
+        cmd="python --version",
         pattern=r"(\d+\.\d+(?:\.\d+)?)",
     ),
     "clang": ToolCheck(
