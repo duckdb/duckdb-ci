@@ -26,6 +26,10 @@ class ToolCheck:
 
 
 TOOL_CHECKS: dict[str, ToolCheck] = {
+    "lcov": ToolCheck(
+        cmd="lcov --version",
+        pattern=r"LCOV version (\d+(?:\.\d+)*)(?:-\d+)?",
+    ),
     "python3": ToolCheck(
         cmd="python --version",
         pattern=r"(\d+\.\d+(?:\.\d+)?)",

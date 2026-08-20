@@ -3,8 +3,17 @@ ca-certificates
 curl
 git
 jq
+lcov >= 2
 libtool
 mold
+perl-Capture-Tiny # manylinux
+perl-DateTime # manylinux
+perl-Devel-Cover # manylinux
+perl-Devel-StackTrace # manylinux
+perl-Digest-MD5 # manylinux
+perl-Module-Load-Conditional # manylinux
+perl-Time-HiRes # manylinux
+perl-TimeDate # manylinux
 python3 >= 3.12
 clang20 >= 20 # alpine
 compiler-rt >= 20 # alpine
