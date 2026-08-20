@@ -1,4 +1,5 @@
 # Packages shared by all main images
+bison
 linux-headers # alpine
 kernel-headers # manylinux
 perl
