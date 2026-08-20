@@ -9,7 +9,7 @@ COPY docker/packages.py /usr/local/bin/packages.py
 
 RUN set -eux; \
     apt-get update; \
-    apt-get install -y --no-install-recommends ca-certificates curl; \
+    apt-get install -y --no-install-recommends ca-certificates curl python3; \
     install -d -m 0755 /etc/apt/keyrings; \
     curl --fail --location --silent --show-error \
       https://apt.llvm.org/llvm-snapshot.gpg.key \
