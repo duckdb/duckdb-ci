@@ -18,14 +18,15 @@ ENV ASAN_SYMBOLIZER_PATH=/usr/bin/llvm-symbolizer
 # Minimal C/C++ build dependencies.
 RUN set -eux; \
     apk add --no-cache python3; \
-    common_packages="$(python3 /usr/local/bin/packages.py list --distro alpine --packages-file /tmp/cpp_packages.txt)"; \
+    ln -sf python3 /usr/bin/python; \
+    common_packages="$(python /usr/local/bin/packages.py list --distro alpine --packages-file /tmp/cpp_packages.txt)"; \
     apk add --no-cache \
       ${common_packages} \
       bash \
       build-base \
       ccache \
       cmake; \
-    python3 /usr/local/bin/packages.py check --distro alpine --packages-file /tmp/cpp_packages.txt; \
+    python /usr/local/bin/packages.py check --distro alpine --packages-file /tmp/cpp_packages.txt; \
     git clone "https://github.com/microsoft/vcpkg.git" /vcpkg; \
     git -C /vcpkg checkout --force "${VCPKG_COMMIT}"; \
     /vcpkg/bootstrap-vcpkg.sh; \
