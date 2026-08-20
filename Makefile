@@ -7,6 +7,7 @@ images:
 	IMAGE_VERSION="$(IMAGE_VERSION)" ./docker/alpine_3_22/build.sh amd64
 	IMAGE_VERSION="$(IMAGE_VERSION)" ./docker/manylinux_2_28/build.sh aarch64
 	IMAGE_VERSION="$(IMAGE_VERSION)" ./docker/manylinux_2_28/build.sh amd64
+	IMAGE_VERSION="$(IMAGE_VERSION)" ./docker/ubuntu_24_04/build.sh amd64
 
 prune:
 	docker image ls --format '{{.Repository}}:{{.Tag}} {{.ID}}' \

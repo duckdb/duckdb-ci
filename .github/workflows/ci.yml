@@ -138,6 +138,95 @@ jobs:
           path: ${{ runner.temp }}/pushed-images-${{ matrix.distro }}-${{ matrix.arch }}.txt
           if-no-files-found: error
 
+  build-lint-image:
+    name: Build lint image (ubuntu_24_04, amd64)
+    runs-on: namespace-profile-linux-x64
+    needs:
+      - prepare
+      - lint
+    if: ${{ needs.prepare.outputs.build_images == 'true' }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Login to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push lint image
+        env:
+          IMAGE_VERSION: ${{ needs.prepare.outputs.image_version }}
+          IMAGE_SUFFIX: ${{ needs.prepare.outputs.image_suffix }}
+          REPO_PREFIX: ghcr.io/${{ github.repository_owner }}/duckdb-ci
+        run: |
+          set -eux -o pipefail
+          ./docker/ubuntu_24_04/build.sh amd64
+          image="${REPO_PREFIX}/ubuntu_24_04_amd64_lint${IMAGE_SUFFIX}:${IMAGE_VERSION}"
+          docker push "${image}"
+          echo "${image}" > "${RUNNER_TEMP}/pushed-images-ubuntu_24_04-amd64.txt"
+
+      - name: Upload pushed image list
+        uses: actions/upload-artifact@v7
+        with:
+          name: pushed-images-ubuntu_24_04-amd64
+          path: ${{ runner.temp }}/pushed-images-ubuntu_24_04-amd64.txt
+          if-no-files-found: error
+
+  test-image-lint:
+    name: Verify lint container (ubuntu_24_04, amd64)
+    runs-on: namespace-profile-linux-x64
+    needs:
+      - prepare
+      - lint
+      - build-lint-image
+    if: ${{ needs.prepare.outputs.build_images == 'true' }}
+    container:
+      image: ghcr.io/${{ github.repository_owner }}/duckdb-ci/ubuntu_24_04_amd64_lint${{ needs.prepare.outputs.image_suffix }}:${{ needs.prepare.outputs.image_version }}
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          path: duckdb-ci
+
+      - name: Checkout DuckDB
+        uses: ./duckdb-ci/.github/actions/checkout
+        with:
+          repository: duckdb/duckdb
+          path: duckdb
+          runner_provider: namespace
+          fetch_depth: "0"
+
+      - name: Verify installed lint tools
+        shell: bash
+        run: |
+          set -eux -o pipefail
+          for tool in \
+            black capigen ccache clang-format clangd-20 clangd-tidy cmake cmake-format \
+            curl g++ gcc gh git jq make ninja python3 shellcheck typos; do
+            command -v "${tool}"
+          done
+          python3 -m pip check
+
+      - name: Verify formatting and generated files
+        working-directory: duckdb
+        run: |
+          set -eux -o pipefail
+          make test_ci
+          make format-check-silent enum-integrity-check extension-patch-check -j -Otarget
+          make generate-files
+          git diff --exit-code
+
+      - name: Verify clangd tidy
+        timeout-minutes: 60
+        working-directory: duckdb
+        run: make tidy-check-clangd
+
   test-image-cpp:
     name: Verify container (${{ matrix.distro }}, ${{ matrix.arch }})
     runs-on: ${{ matrix.runs_on }}
@@ -593,7 +682,9 @@ jobs:
       - test-extension-template
       - test-bot
       - build-images
+      - build-lint-image
       - test-image-cpp
+      - test-image-lint
     runs-on: ubuntu-slim
     steps:
       - name: Check CI status

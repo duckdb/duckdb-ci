@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   prune-dev-images:
-    name: Prune _dev manylinux images
+    name: Prune _dev images
     runs-on: ubuntu-latest
     steps:
       - name: Prune old _dev package versions
@@ -27,10 +27,10 @@ jobs:
             gh api "${api_base}/packages?package_type=container&per_page=100" >/tmp/packages.json
           fi
 
-          mapfile -t packages < <(jq -r '.[].name | select(test("^duckdb-ci/manylinux_2_28_.*_dev$"))' /tmp/packages.json)
+          mapfile -t packages < <(jq -r '.[].name | select(test("^duckdb-ci/(manylinux_2_28_.*|ubuntu_24_04_amd64_lint)_dev$"))' /tmp/packages.json)
 
           if [[ ${#packages[@]} -eq 0 ]]; then
-            echo "No matching _dev manylinux packages found; nothing to prune."
+            echo "No matching _dev packages found; nothing to prune."
             exit 0
           fi
 
