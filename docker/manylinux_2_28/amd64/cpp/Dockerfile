@@ -4,6 +4,7 @@ COPY docker/packages.py /usr/local/bin/packages.py
 
 ARG CMAKE_VERSION
 ARG CCACHE_VERSION
+ARG LCOV_VERSION
 ARG VCPKG_COMMIT
 
 # Common environment variables and mounts.
@@ -16,6 +17,9 @@ ENV CCACHE_DIR=/ccache
 ENV VCPKG_FORCE_SYSTEM_BINARIES=1
 ENV ASAN_SYMBOLIZER_PATH=/usr/bin/llvm-symbolizer
 
+# The upstream RPM incorrectly declares bundled LCOV Perl modules as external
+# dependencies. Genuine external Perl dependencies are installed from the
+# package manifest, so upgrade with --nodeps to ignore only those false edges.
 # Minimal C/C++ build dependencies.
 RUN set -eux; \
     ln -sf python3 /usr/bin/python; \
@@ -23,6 +27,9 @@ RUN set -eux; \
     dnf groupinstall -y "Development Tools"; \
     dnf install -y \
       ${common_packages}; \
+    wget -nv -O /tmp/lcov.rpm "https://github.com/linux-test-project/lcov/releases/download/v${LCOV_VERSION}/lcov-${LCOV_VERSION}-0.noarch.rpm"; \
+    rpm --upgrade --nodeps /tmp/lcov.rpm; \
+    rm /tmp/lcov.rpm; \
     alternatives --install /usr/bin/python3 python3 /usr/local/bin/python3.14 314; \
     alternatives --set python3 /usr/local/bin/python3.14; \
     ln -sf python3 /usr/bin/python; \

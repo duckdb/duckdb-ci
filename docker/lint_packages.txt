@@ -1,0 +1,19 @@
+# Packages for the Ubuntu lint image
+bash
+build-essential
+ca-certificates
+ccache
+clangd-20 >= 20
+cmake
+curl
+gh
+git
+gzip
+jq
+make
+ninja-build
+python3
+python3-pip
+python3-venv
+shellcheck
+tar

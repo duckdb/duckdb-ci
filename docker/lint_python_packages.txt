@@ -1,0 +1,9 @@
+black==24.*
+capigen==0.7.0
+clang_format==11.0.1
+clangd-tidy==1.1.1
+cmake-format
+cxxheaderparser
+pcpp
+pybind11[global]
+PyYAML

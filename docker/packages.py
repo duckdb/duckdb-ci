@@ -26,6 +26,14 @@ class ToolCheck:
 
 
 TOOL_CHECKS: dict[str, ToolCheck] = {
+    "clangd-20": ToolCheck(
+        cmd="clangd-20 --version",
+        pattern=r"clangd version (\d+(?:\.\d+)*)",
+    ),
+    "lcov": ToolCheck(
+        cmd="lcov --version",
+        pattern=r"LCOV version (\d+(?:\.\d+)*)(?:-\d+)?",
+    ),
     "python3": ToolCheck(
         cmd="python --version",
         pattern=r"(\d+\.\d+(?:\.\d+)?)",
@@ -179,12 +187,12 @@ def main() -> int:
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     parser_list = subparsers.add_parser("list", help="Filter package list for a distro")
-    parser_list.add_argument("--distro", choices=("alpine", "manylinux"), required=True)
+    parser_list.add_argument("--distro", choices=("alpine", "manylinux", "ubuntu"), required=True)
     parser_list.add_argument("--packages-file", required=True)
     parser_list.set_defaults(func=_cmd_list)
 
     parser_check = subparsers.add_parser("check", help="Verify installed tooling")
-    parser_check.add_argument("--distro", choices=("alpine", "manylinux"), required=True)
+    parser_check.add_argument("--distro", choices=("alpine", "manylinux", "ubuntu"), required=True)
     parser_check.add_argument("--packages-file", required=True)
     parser_check.set_defaults(func=_cmd_check)
 
