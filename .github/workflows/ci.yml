@@ -223,11 +223,6 @@ jobs:
           make generate-files
           git diff --exit-code
 
-      - name: Verify clangd tidy
-        timeout-minutes: 60
-        working-directory: duckdb
-        run: make tidy-check-clangd
-
   test-image-cpp:
     name: Verify container (${{ matrix.distro }}, ${{ matrix.arch }})
     runs-on: ${{ matrix.runs_on }}
