@@ -214,6 +214,7 @@ jobs:
           python3 -m pip check
 
       - name: Verify formatting and generated files
+        shell: bash
         working-directory: duckdb
         run: |
           set -eux -o pipefail
