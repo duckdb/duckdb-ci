@@ -1,0 +1,2 @@
+# Python packages for manylinux cpp images
+pytest >= 8
