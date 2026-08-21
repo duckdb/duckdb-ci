@@ -702,7 +702,7 @@ jobs:
           fi
 
       - name: Pushed Docker images
-        if: ${{ needs.prepare.outputs.docker_changed == 'true' }}
+        if: ${{ needs.prepare.outputs.build_images == 'true' }}
         uses: actions/download-artifact@v8
         with:
           pattern: pushed-images-*
@@ -710,7 +710,7 @@ jobs:
           path: ${{ runner.temp }}/pushed-images
 
       - name: Print pushed Docker images
-        if: ${{ needs.prepare.outputs.docker_changed == 'true' }}
+        if: ${{ needs.prepare.outputs.build_images == 'true' }}
         run: |
           set -euo pipefail
           echo "Pushed Docker images:"
