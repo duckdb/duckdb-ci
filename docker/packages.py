@@ -39,6 +39,10 @@ TOOL_CHECKS: dict[str, ToolCheck] = {
         cmd="python --version",
         pattern=r"(\d+\.\d+(?:\.\d+)?)",
     ),
+    "py3-requests": ToolCheck(
+        cmd='python -c "import requests; print(requests.__version__)"',
+        pattern=r"(\d+(?:\.\d+)*)",
+    ),
     "py3-pytest": ToolCheck(
         cmd="pytest --version",
         pattern=r"pytest (\d+(?:\.\d+)*)",
@@ -48,6 +52,10 @@ TOOL_CHECKS: dict[str, ToolCheck] = {
         cmd="pytest --version",
         pattern=r"pytest (\d+(?:\.\d+)*)",
         additional_cmds=("python -m pytest --version",),
+    ),
+    "requests": ToolCheck(
+        cmd='python -c "import requests; print(requests.__version__)"',
+        pattern=r"(\d+(?:\.\d+)*)",
     ),
     "clang": ToolCheck(
         cmd="clang++ --version",
