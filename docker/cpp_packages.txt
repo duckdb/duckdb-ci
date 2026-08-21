@@ -25,10 +25,8 @@ gcc-toolset-14-libasan-devel # manylinux
 gcc-toolset-14-libtsan-devel # manylinux
 ninja # alpine
 ninja-build # manylinux
-py3-requests # alpine
-python3-requests # manylinux
-py3-pytest # alpine
-python3-pytest # manylinux
+py3-requests >= 2.20 # alpine
+py3-pytest >= 8 # alpine
 tar
 unzip
 wget

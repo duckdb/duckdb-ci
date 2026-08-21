@@ -1,0 +1,3 @@
+# Python packages for manylinux cpp images
+pytest >= 8
+requests >= 2.20

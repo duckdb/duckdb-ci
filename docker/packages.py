@@ -23,6 +23,7 @@ class PackageEntry:
 class ToolCheck:
     cmd: str
     pattern: str
+    additional_cmds: tuple[str, ...] = ()
 
 
 TOOL_CHECKS: dict[str, ToolCheck] = {
@@ -37,6 +38,24 @@ TOOL_CHECKS: dict[str, ToolCheck] = {
     "python3": ToolCheck(
         cmd="python --version",
         pattern=r"(\d+\.\d+(?:\.\d+)?)",
+    ),
+    "py3-requests": ToolCheck(
+        cmd='python -c "import requests; print(requests.__version__)"',
+        pattern=r"(\d+(?:\.\d+)*)",
+    ),
+    "py3-pytest": ToolCheck(
+        cmd="pytest --version",
+        pattern=r"pytest (\d+(?:\.\d+)*)",
+        additional_cmds=("python -m pytest --version",),
+    ),
+    "pytest": ToolCheck(
+        cmd="pytest --version",
+        pattern=r"pytest (\d+(?:\.\d+)*)",
+        additional_cmds=("python -m pytest --version",),
+    ),
+    "requests": ToolCheck(
+        cmd='python -c "import requests; print(requests.__version__)"',
+        pattern=r"(\d+(?:\.\d+)*)",
     ),
     "clang": ToolCheck(
         cmd="clang++ --version",
@@ -105,10 +124,10 @@ def _cmd_list(args: argparse.Namespace) -> int:
     return 0
 
 
-def _extract_version(check: ToolCheck, tool_name: str) -> tuple[int, ...]:
+def _extract_version(check: ToolCheck, tool_name: str, cmd: str) -> tuple[int, ...]:
     try:
         result = subprocess.run(
-            check.cmd,
+            cmd,
             shell=True,
             text=True,
             capture_output=True,
@@ -120,13 +139,14 @@ def _extract_version(check: ToolCheck, tool_name: str) -> tuple[int, ...]:
     output = f"{result.stdout}\n{result.stderr}".strip()
     if result.returncode != 0:
         raise RuntimeError(
-            f"check command failed for {tool_name}: {check.cmd!r} (exit {result.returncode}), output={output!r}"
+            f"check command failed for {tool_name}: {cmd!r} (exit {result.returncode}), output={output!r}"
         )
 
     match = re.search(check.pattern, output)
     if match is None:
         raise RuntimeError(
-            f"version pattern did not match for {tool_name}: pattern={check.pattern!r}, output={output!r}"
+            f"version pattern did not match for {tool_name}: command={cmd!r}, "
+            f"pattern={check.pattern!r}, output={output!r}"
         )
 
     version = match.group(1) if match.groups() else match.group(0)
@@ -161,23 +181,25 @@ def _cmd_check(args: argparse.Namespace) -> int:
             )
             return 1
 
-        try:
-            actual = _extract_version(checker, entry.name)
-        except RuntimeError as exc:
-            print(f"ERROR: {exc}", file=sys.stderr)
-            return 1
-
         required = _parse_version(entry.version)
-        if actual < required:
-            actual_str = ".".join(str(p) for p in actual)
-            print(
-                f"ERROR: {entry.name} must be >= {entry.version}, found {actual_str}",
-                file=sys.stderr,
-            )
-            return 1
+        commands = (checker.cmd, *checker.additional_cmds)
+        for cmd in commands:
+            try:
+                actual = _extract_version(checker, entry.name, cmd)
+            except RuntimeError as exc:
+                print(f"ERROR: {exc}", file=sys.stderr)
+                return 1
 
-        actual_str = ".".join(str(p) for p in actual)
-        print(f"{entry.name} version check passed: {actual_str} >= {entry.version}")
+            actual_str = ".".join(str(p) for p in actual)
+            if actual < required:
+                print(
+                    f"ERROR: {entry.name} must be >= {entry.version} using {cmd!r}, found {actual_str}",
+                    file=sys.stderr,
+                )
+                return 1
+
+            command_suffix = f" using {cmd!r}" if len(commands) > 1 else ""
+            print(f"{entry.name} version check passed{command_suffix}: {actual_str} >= {entry.version}")
 
     return 0
 

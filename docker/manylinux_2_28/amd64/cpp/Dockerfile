@@ -1,5 +1,6 @@
 FROM quay.io/pypa/manylinux_2_28_x86_64
 COPY docker/cpp_packages.txt /tmp/cpp_packages.txt
+COPY docker/cpp_python_packages.txt /tmp/cpp_python_packages.txt
 COPY docker/packages.py /usr/local/bin/packages.py
 
 ARG CMAKE_VERSION
@@ -16,6 +17,7 @@ VOLUME /ccache
 ENV CCACHE_DIR=/ccache
 ENV VCPKG_FORCE_SYSTEM_BINARIES=1
 ENV ASAN_SYMBOLIZER_PATH=/usr/bin/llvm-symbolizer
+ENV PATH="/opt/python/cp314-cp314/bin:${PATH}"
 
 # The upstream RPM incorrectly declares bundled LCOV Perl modules as external
 # dependencies. Genuine external Perl dependencies are installed from the
@@ -30,10 +32,12 @@ RUN set -eux; \
     wget -nv -O /tmp/lcov.rpm "https://github.com/linux-test-project/lcov/releases/download/v${LCOV_VERSION}/lcov-${LCOV_VERSION}-0.noarch.rpm"; \
     rpm --upgrade --nodeps /tmp/lcov.rpm; \
     rm /tmp/lcov.rpm; \
-    alternatives --install /usr/bin/python3 python3 /usr/local/bin/python3.14 314; \
-    alternatives --set python3 /usr/local/bin/python3.14; \
+    alternatives --install /usr/bin/python3 python3 /opt/python/cp314-cp314/bin/python3.14 314; \
+    alternatives --set python3 /opt/python/cp314-cp314/bin/python3.14; \
     ln -sf python3 /usr/bin/python; \
+    python -m pip install --no-cache-dir -r /tmp/cpp_python_packages.txt; \
     python /usr/local/bin/packages.py check --distro manylinux --packages-file /tmp/cpp_packages.txt; \
+    python /usr/local/bin/packages.py check --distro manylinux --packages-file /tmp/cpp_python_packages.txt; \
     mkdir -p /tmp/ccache && cd /tmp/ccache; \
     wget -nv "https://github.com/ccache/ccache/releases/download/v${CCACHE_VERSION}/ccache-${CCACHE_VERSION}-linux-x86_64-musl-static.tar.xz"; \
     tar -xf "ccache-${CCACHE_VERSION}-linux-x86_64-musl-static.tar.xz"; \
