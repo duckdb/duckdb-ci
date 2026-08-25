@@ -29,6 +29,7 @@ class ExtensionGroup:
     default_exclude_archs: str
     opt_in_archs: str | None
     config_paths: tuple[str, ...]
+    extra_toolchains: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -47,6 +48,7 @@ class BuildJob:
     osx_build_arch: str | None = None
     container_name: str | None = None
     container: str | None = None
+    extra_toolchains: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         result: dict[str, Any] = {
@@ -60,6 +62,7 @@ class BuildJob:
             "exclude_archs": self.exclude_archs,
             "opt_in_archs": self.opt_in_archs,
             "toolchain": self.toolchain,
+            "extra_toolchains": self.extra_toolchains,
             "extension_config_paths": list(self.extension_config_paths),
         }
         if self.osx_build_arch is not None:
@@ -353,7 +356,13 @@ def parse_groups(raw: str | None) -> tuple[ExtensionGroup, ...]:
             field, value = line.split(":", 1)
             field = field.strip()
             value = value.strip()
-            if field not in {"config", "default_exclude_archs", "opt_in_archs", "toolchain"}:
+            if field not in {
+                "config",
+                "default_exclude_archs",
+                "extra_toolchains",
+                "opt_in_archs",
+                "toolchain",
+            }:
                 raise MatrixError(f"group {current_group!r} has unknown field: {field}")
             if field in groups[current_group]:
                 raise MatrixError(f"group {current_group!r} field {field!r} is duplicated")
@@ -398,7 +407,7 @@ def parse_groups(raw: str | None) -> tuple[ExtensionGroup, ...]:
         supported_toolchains = {"main", "rust", "cuda"}
         if toolchain not in supported_toolchains:
             raise MatrixError(f"group {key!r} has unsupported toolchain: {toolchain!r}")
-        for field in ("default_exclude_archs", "opt_in_archs"):
+        for field in ("default_exclude_archs", "extra_toolchains", "opt_in_archs"):
             value = config.get(field)
             if value is not None and not isinstance(value, str):
                 raise MatrixError(f"group {key!r} {field} must be a string")
@@ -407,6 +416,7 @@ def parse_groups(raw: str | None) -> tuple[ExtensionGroup, ...]:
                 key=key,
                 toolchain=toolchain,
                 default_exclude_archs=config.get("default_exclude_archs", ""),
+                extra_toolchains=config.get("extra_toolchains", ""),
                 opt_in_archs=config.get("opt_in_archs"),
                 config_paths=paths,
             )
@@ -506,6 +516,7 @@ def build_job(
         exclude_archs=effective_exclude_archs,
         opt_in_archs=effective_opt_in_archs,
         toolchain=group.toolchain,
+        extra_toolchains=group.extra_toolchains,
         extension_config_paths=group.config_paths,
         osx_build_arch=osx_build_arch,
         container_name=container_name,
@@ -659,6 +670,7 @@ def _append_build_matrix_log(
         ("vcpkg_target_triplet", lambda job: job.vcpkg_target_triplet),
         ("vcpkg_host_triplet", lambda job: job.vcpkg_host_triplet),
         ("toolchain", lambda job: job.toolchain),
+        ("extra_toolchains", lambda job: job.extra_toolchains),
     ]
     if any(job.container_name for job in matrix.includes):
         columns.append(("container_name", lambda job: job.container_name))

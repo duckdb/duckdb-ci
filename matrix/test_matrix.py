@@ -145,6 +145,7 @@ def test_default_groups_parse_in_sorted_order():
 
     assert [group.key for group in groups] == ["external", "main", "rust"]
     assert [group.toolchain for group in groups] == ["main", "main", "rust"]
+    assert [group.extra_toolchains for group in groups] == ["", "", ""]
     assert groups[1].config_paths == (
         ".github/config/in_tree_extensions.cmake",
         ".github/config/out_of_tree_extensions.cmake",
@@ -155,6 +156,7 @@ def test_group_yaml_parser_accepts_scalar_config_and_rejects_invalid_fields():
     groups = parse_groups(
         """custom:
   config: custom.cmake
+  extra_toolchains: unixodbc;parser_tools
   opt_in_archs: linux_amd64
   toolchain: main
 """
@@ -162,6 +164,7 @@ def test_group_yaml_parser_accepts_scalar_config_and_rejects_invalid_fields():
 
     assert groups[0].key == "custom"
     assert groups[0].config_paths == ("custom.cmake",)
+    assert groups[0].extra_toolchains == "unixodbc;parser_tools"
     assert groups[0].opt_in_archs == "linux_amd64"
 
     with pytest.raises(MatrixError):
@@ -178,6 +181,15 @@ def test_group_yaml_parser_accepts_scalar_config_and_rejects_invalid_fields():
             """custom:
   config: custom.cmake
   toolchain: unsupported
+"""
+        )
+
+    with pytest.raises(MatrixError, match="extra_toolchains.*cannot be a list"):
+        parse_groups(
+            """custom:
+  config: custom.cmake
+  extra_toolchains:
+  toolchain: main
 """
         )
 
@@ -295,7 +307,7 @@ def test_group_expansion_exposes_toolchain_and_config_paths():
     external_job = matrices.build.linux.get(
         arch="linux_amd64", prefix="external-extensions"
     )
-    assert "extra_toolchains" not in main_job.to_dict()
+    assert main_job.to_dict()["extra_toolchains"] == ""
     assert main_job.to_dict()["group_name"] == "main"
     assert main_job.to_dict()["artifact_prefix"] == "main-extensions"
     assert "prefix" not in main_job.to_dict()
@@ -328,6 +340,27 @@ def test_group_expansion_exposes_toolchain_and_config_paths():
         for job in matrices.build.linux.includes
         if job.prefix == "rust-extensions"
     ]
+
+
+def test_group_expansion_exposes_extra_toolchains_only_on_builds():
+    matrices = compute_matrices(
+        load_repo_config(),
+        groups="""scanner:
+  config: .github/config/external_extensions.cmake
+  extra_toolchains: unixodbc;parser_tools
+  toolchain: main
+""",
+        reduced_ci_mode="disabled",
+    )
+
+    scanner_build = matrices.build.macos.get(
+        arch="osx_amd64", prefix="scanner-extensions"
+    )
+    assert scanner_build.extra_toolchains == "unixodbc;parser_tools"
+    assert scanner_build.to_dict()["extra_toolchains"] == "unixodbc;parser_tools"
+    assert "extra_toolchains" not in matrices.test.macos.get(
+        arch="osx_amd64"
+    ).to_dict()
 
 
 def test_test_config_paths_are_ordered_deduplicated_and_arch_specific():
@@ -466,6 +499,7 @@ def test_render_readable_matrix_log_includes_tables_details_and_empty_platforms(
             container_name="manylinux_2_28_amd64_main",
             container="ghcr.io/duckdb/duckdb-ci/manylinux_2_28_amd64_main:20260528-fbcf3036",
             toolchain="main",
+            extra_toolchains="unixodbc;parser_tools",
             extension_config_paths=(
                 ".github/config/in_tree_extensions.cmake",
                 ".github/config/out_of_tree_extensions.cmake",
@@ -532,6 +566,8 @@ def test_render_readable_matrix_log_includes_tables_details_and_empty_platforms(
     assert "#  duckdb_arch" in output
     assert "linux_amd64" in output
     assert "group_name" in output
+    assert "extra_toolchains" in output
+    assert "unixodbc;parser_tools" in output
     assert "main-extensions" in output
     assert "main-extensions-linux_amd64" in output
     assert "*-extensions-linux_amd64" in output
