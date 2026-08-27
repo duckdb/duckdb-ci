@@ -10,6 +10,8 @@ ARG VCPKG_COMMIT
 
 # Common environment variables and mounts.
 ENV GEN=ninja
+ENV CC=clang
+ENV CXX=clang++
 VOLUME /build
 WORKDIR /build
 
