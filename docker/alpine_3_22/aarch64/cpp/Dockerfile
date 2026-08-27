@@ -28,6 +28,8 @@ ARG VCPKG_COMMIT
 
 # Common environment variables and mounts.
 ENV GEN=ninja DUCKDB_PLATFORM=linux_arm64_musl
+ENV CC=clang
+ENV CXX=clang++
 VOLUME /build
 WORKDIR /build
 
