@@ -6,6 +6,9 @@ DUCKDB_DIR ?= duckdb
 ARTIFACT_DIR ?= duckdb-static
 BUILD_DIR ?= build
 CC ?= cc
+CXX ?= c++
+
+FAKE_EXTENSION_LOADER_OBJ := $(BUILD_DIR)/fake_extension_loader.o
 
 # Prefer canonical static lib location and fall back to first libduckdb*.a in release tree.
 DUCKDB_STATIC_PRIMARY := $(DUCKDB_DIR)/build/release/src/libduckdb_static.a
@@ -37,12 +40,16 @@ install-deps:
 smoke: $(BUILD_DIR)/compat_smoke
 	./$(BUILD_DIR)/compat_smoke
 
-$(BUILD_DIR)/compat_smoke: smoke.c
+$(FAKE_EXTENSION_LOADER_OBJ): fake_extension_loader.cpp
+	mkdir -p "$(BUILD_DIR)"
+	$(CXX) -c "$<" -o "$@"
+
+$(BUILD_DIR)/compat_smoke: smoke.c $(FAKE_EXTENSION_LOADER_OBJ)
 	set -eu; \
 	test -f "$(ARTIFACT_DIR)/duckdb.h"; \
 	test -f "$(ARTIFACT_DIR)/libduckdb.a"; \
 	mkdir -p "$(BUILD_DIR)"; \
-	$(CC) -I"$(ARTIFACT_DIR)" smoke.c "$(ARTIFACT_DIR)/libduckdb.a" -ldl -lpthread -lm -lstdc++ -o "$@"
+	$(CC) -I"$(ARTIFACT_DIR)" smoke.c "$(ARTIFACT_DIR)/libduckdb.a" "$(FAKE_EXTENSION_LOADER_OBJ)" -ldl -lpthread -lm -lstdc++ -o "$@"
 
 test: install-deps smoke
 
