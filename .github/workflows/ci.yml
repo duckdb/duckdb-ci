@@ -511,7 +511,9 @@ jobs:
             "$BUILD_MACOS" "$TEST_MACOS" \
             "$BUILD_WINDOWS" "$TEST_WINDOWS" \
             "$BUILD_WASM" "$TEST_WASM"; do
-            jq -e '.include | type == "array"' <<<"$output" >/dev/null
+            if [[ -n "$output" ]]; then
+              jq -e '.include | type == "array"' <<<"$output" >/dev/null
+            fi
           done
 
   test-checkout:
