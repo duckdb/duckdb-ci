@@ -480,9 +480,14 @@ def test_render_github_output_uses_exact_output_keys(tmp_path):
         "build_wasm",
         "test_wasm",
     ]
-    for line in lines:
-        payload = json.loads(line.split("=", 1)[1])
-        assert json.dumps(payload, separators=(",", ":"), sort_keys=True) == line.split("=", 1)[1]
+    outputs = dict(line.split("=", 1) for line in lines)
+    for key, matrix in matrices.outputs():
+        payload = outputs[key]
+        if not matrix.includes:
+            assert payload == ""
+        else:
+            parsed = json.loads(payload)
+            assert json.dumps(parsed, separators=(",", ":"), sort_keys=True) == payload
 
 
 def test_render_readable_matrix_log_includes_tables_details_and_empty_platforms():

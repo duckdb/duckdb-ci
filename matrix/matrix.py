@@ -632,7 +632,11 @@ def compute_matrices(
 def render_github_output(matrices: Matrices) -> str:
     lines = []
     for key, matrix in matrices.outputs():
-        payload = json.dumps(matrix.to_dict(), separators=(",", ":"), sort_keys=True)
+        payload = (
+            json.dumps(matrix.to_dict(), separators=(",", ":"), sort_keys=True)
+            if matrix.includes
+            else ""
+        )
         lines.append(f"{key}={payload}")
     return "\n".join(lines) + "\n"
 

@@ -28,28 +28,28 @@ inputs:
 
 outputs:
   build_linux:
-    description: "Linux build job matrix"
+    description: "Linux build job matrix, or empty when no jobs remain"
     value: ${{ steps.matrix.outputs.build_linux }}
   test_linux:
-    description: "Linux test job matrix"
+    description: "Linux test job matrix, or empty when no jobs remain"
     value: ${{ steps.matrix.outputs.test_linux }}
   build_macos:
-    description: "macOS build job matrix"
+    description: "macOS build job matrix, or empty when no jobs remain"
     value: ${{ steps.matrix.outputs.build_macos }}
   test_macos:
-    description: "macOS test job matrix"
+    description: "macOS test job matrix, or empty when no jobs remain"
     value: ${{ steps.matrix.outputs.test_macos }}
   build_windows:
-    description: "Windows build job matrix"
+    description: "Windows build job matrix, or empty when no jobs remain"
     value: ${{ steps.matrix.outputs.build_windows }}
   test_windows:
-    description: "Windows test job matrix"
+    description: "Windows test job matrix, or empty when no jobs remain"
     value: ${{ steps.matrix.outputs.test_windows }}
   build_wasm:
-    description: "Wasm build job matrix"
+    description: "Wasm build job matrix, or empty when no jobs remain"
     value: ${{ steps.matrix.outputs.build_wasm }}
   test_wasm:
-    description: "Wasm test job matrix"
+    description: "Wasm test job matrix, or empty when no jobs remain"
     value: ${{ steps.matrix.outputs.test_wasm }}
 
 runs:
