@@ -5,10 +5,19 @@ from __future__ import annotations
 
 import argparse
 import dataclasses
+import hashlib
+import os
+import platform
 import re
 import shlex
+import shutil
 import subprocess
 import sys
+import tarfile
+import tempfile
+import urllib.error
+import urllib.request
+import zipfile
 from pathlib import Path
 
 
@@ -24,6 +33,14 @@ class ToolCheck:
     cmd: str
     pattern: str
     additional_cmds: tuple[str, ...] = ()
+
+
+@dataclasses.dataclass(frozen=True)
+class ToolArtifact:
+    archive_name: str
+    archive_url: str
+    checksum_url: str
+    binary_member: str
 
 
 TOOL_CHECKS: dict[str, ToolCheck] = {
@@ -57,6 +74,14 @@ TOOL_CHECKS: dict[str, ToolCheck] = {
         cmd='python -c "import requests; print(requests.__version__)"',
         pattern=r"(\d+(?:\.\d+)*)",
     ),
+    "rclone": ToolCheck(
+        cmd="rclone version",
+        pattern=r"rclone v(\d+(?:\.\d+)*)",
+    ),
+    "s5cmd": ToolCheck(
+        cmd="s5cmd version",
+        pattern=r"v(\d+(?:\.\d+)*)",
+    ),
     "clang": ToolCheck(
         cmd="clang++ --version",
         pattern=r"clang version (\d+(?:\.\d+)*)",
@@ -85,6 +110,54 @@ def _parse_version(raw: str) -> tuple[int, ...]:
     if not parts:
         raise ValueError("empty version")
     return parts
+
+
+def _parse_install_spec(raw: str) -> tuple[str, str]:
+    if raw.count("@") != 1:
+        raise ValueError(f"invalid install specification {raw!r}; expected NAME@VERSION")
+
+    name, version = raw.split("@", 1)
+    if not name or not re.fullmatch(r"\d+(?:\.\d+)*", version):
+        raise ValueError(f"invalid install specification {raw!r}; expected NAME@VERSION")
+    if name not in ("rclone", "s5cmd"):
+        raise ValueError(f"unsupported install tool {name!r}")
+
+    return name, version
+
+
+def _target_architecture() -> str:
+    machine = platform.machine().lower()
+    if machine in ("amd64", "x86_64"):
+        return "amd64"
+    if machine in ("aarch64", "arm64"):
+        return "arm64"
+    raise RuntimeError(f"unsupported architecture for tool installation: {machine!r}")
+
+
+def _tool_artifact(name: str, version: str) -> ToolArtifact:
+    if platform.system() != "Linux":
+        raise RuntimeError(f"tool installation is only supported on Linux, found {platform.system()!r}")
+
+    architecture = _target_architecture()
+    if name == "s5cmd":
+        release_arch = "64bit" if architecture == "amd64" else "arm64"
+        archive_name = f"s5cmd_{version}_Linux-{release_arch}.tar.gz"
+        release_url = f"https://github.com/peak/s5cmd/releases/download/v{version}"
+        return ToolArtifact(
+            archive_name=archive_name,
+            archive_url=f"{release_url}/{archive_name}",
+            checksum_url=f"{release_url}/s5cmd_checksums.txt",
+            binary_member="s5cmd",
+        )
+
+    archive_name = f"rclone-v{version}-linux-{architecture}.zip"
+    release_url = f"https://downloads.rclone.org/v{version}"
+    return ToolArtifact(
+        archive_name=archive_name,
+        archive_url=f"{release_url}/{archive_name}",
+        checksum_url=f"{release_url}/SHA256SUMS",
+        binary_member=f"rclone-v{version}-linux-{architecture}/rclone",
+    )
 
 
 def _parse_packages(packages_file: Path, distro: str) -> list[PackageEntry]:
@@ -157,8 +230,112 @@ def _extract_version(check: ToolCheck, tool_name: str, cmd: str) -> tuple[int, .
         raise RuntimeError(f"invalid version extracted for {tool_name}: {version!r}") from exc
 
 
-def _cmd_check(args: argparse.Namespace) -> int:
-    entries = _parse_packages(Path(args.packages_file), args.distro)
+def _download(url: str, destination: Path) -> None:
+    request = urllib.request.Request(url, headers={"User-Agent": "duckdb-ci-packages"})
+    try:
+        with urllib.request.urlopen(request) as response, destination.open("wb") as output:
+            shutil.copyfileobj(response, output)
+    except (OSError, urllib.error.URLError) as exc:
+        raise RuntimeError(f"failed to download {url!r}: {exc}") from exc
+
+
+def _expected_checksum(checksum_file: Path, archive_name: str) -> str:
+    for line in checksum_file.read_text(encoding="utf-8").splitlines():
+        parts = line.split()
+        if len(parts) == 2 and parts[1].lstrip("*") == archive_name:
+            checksum = parts[0].lower()
+            if re.fullmatch(r"[0-9a-f]{64}", checksum):
+                return checksum
+            break
+    raise RuntimeError(f"no valid SHA-256 checksum found for {archive_name!r}")
+
+
+def _verify_checksum(archive: Path, checksum_file: Path) -> None:
+    expected = _expected_checksum(checksum_file, archive.name)
+    digest = hashlib.sha256()
+    with archive.open("rb") as source:
+        for chunk in iter(lambda: source.read(1024 * 1024), b""):
+            digest.update(chunk)
+    actual = digest.hexdigest()
+    if actual != expected:
+        raise RuntimeError(f"SHA-256 mismatch for {archive.name!r}: expected {expected}, found {actual}")
+
+
+def _extract_binary(artifact: ToolArtifact, archive: Path, destination: Path) -> None:
+    try:
+        if artifact.archive_name.endswith(".tar.gz"):
+            with tarfile.open(archive, "r:gz") as bundle:
+                member = bundle.getmember(artifact.binary_member)
+                if not member.isfile():
+                    raise RuntimeError(f"archive member is not a file: {artifact.binary_member!r}")
+                source = bundle.extractfile(member)
+                if source is None:  # pragma: no cover
+                    raise RuntimeError(f"failed to read archive member {artifact.binary_member!r}")
+                with source, destination.open("wb") as output:
+                    shutil.copyfileobj(source, output)
+            return
+
+        with zipfile.ZipFile(archive) as bundle:
+            member = bundle.getinfo(artifact.binary_member)
+            if member.is_dir():
+                raise RuntimeError(f"archive member is not a file: {artifact.binary_member!r}")
+            with bundle.open(member) as source, destination.open("wb") as output:
+                shutil.copyfileobj(source, output)
+    except (KeyError, tarfile.TarError, zipfile.BadZipFile) as exc:
+        raise RuntimeError(
+            f"failed to extract {artifact.binary_member!r} from {artifact.archive_name!r}: {exc}"
+        ) from exc
+
+
+def _installed_version(name: str) -> tuple[int, ...] | None:
+    checker = TOOL_CHECKS[name]
+    try:
+        return _extract_version(checker, name, checker.cmd)
+    except RuntimeError:
+        return None
+
+
+def _install_binary(name: str, source: Path) -> None:
+    destination = Path("/usr/local/bin") / name
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    temporary_destination = destination.with_name(f".{name}.tmp")
+    try:
+        shutil.copyfile(source, temporary_destination)
+        temporary_destination.chmod(0o755)
+        os.replace(temporary_destination, destination)
+    finally:
+        temporary_destination.unlink(missing_ok=True)
+
+
+def _install_tool(name: str, version: str) -> None:
+    required = _parse_version(version)
+    installed = _installed_version(name)
+    if installed is not None and installed >= required:
+        installed_str = ".".join(str(part) for part in installed)
+        print(f"{name} installation skipped: {installed_str} >= {version}")
+        return
+
+    artifact = _tool_artifact(name, version)
+    with tempfile.TemporaryDirectory(prefix=f"{name}-") as temporary_directory:
+        temporary_path = Path(temporary_directory)
+        archive = temporary_path / artifact.archive_name
+        checksum_file = temporary_path / "checksums.txt"
+        binary = temporary_path / name
+
+        _download(artifact.archive_url, archive)
+        _download(artifact.checksum_url, checksum_file)
+        _verify_checksum(archive, checksum_file)
+        _extract_binary(artifact, archive, binary)
+        _install_binary(name, binary)
+
+    actual = _installed_version(name)
+    if actual != required:
+        actual_str = "unavailable" if actual is None else ".".join(str(part) for part in actual)
+        raise RuntimeError(f"{name} installation expected version {version}, found {actual_str}")
+    print(f"{name} installation passed: {version}")
+
+
+def _check_entries(entries: list[PackageEntry]) -> int:
     constrained = [entry for entry in entries if entry.op is not None and entry.version is not None]
 
     if not constrained:
@@ -204,6 +381,26 @@ def _cmd_check(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_check(args: argparse.Namespace) -> int:
+    entries = _parse_packages(Path(args.packages_file), args.distro)
+    return _check_entries(entries)
+
+
+def _cmd_install(args: argparse.Namespace) -> int:
+    tools: list[tuple[str, str]] = []
+    names: set[str] = set()
+    for raw_spec in args.tools:
+        name, version = _parse_install_spec(raw_spec)
+        if name in names:
+            raise ValueError(f"duplicate install tool {name!r}")
+        names.add(name)
+        tools.append((name, version))
+
+    for name, version in tools:
+        _install_tool(name, version)
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -218,10 +415,14 @@ def main() -> int:
     parser_check.add_argument("--packages-file", required=True)
     parser_check.set_defaults(func=_cmd_check)
 
+    parser_install = subparsers.add_parser("install", help="Install versioned standalone tools")
+    parser_install.add_argument("tools", nargs="+", metavar="NAME@VERSION")
+    parser_install.set_defaults(func=_cmd_install)
+
     args = parser.parse_args()
     try:
         return args.func(args)
-    except ValueError as exc:
+    except (RuntimeError, ValueError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1
 
