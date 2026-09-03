@@ -15,6 +15,7 @@ perl-Module-Load-Conditional # manylinux
 perl-Time-HiRes # manylinux
 perl-TimeDate # manylinux
 python3 >= 3.12
+py3-pip # alpine
 clang20 >= 20 # alpine
 compiler-rt >= 20 # alpine
 llvm20 >= 20 # alpine
