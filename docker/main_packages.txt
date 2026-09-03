@@ -7,6 +7,7 @@ kernel-headers # manylinux
 perl
 perl-utils # alpine
 perl-IPC-Cmd # manylinux
+rclone >= 1.69.3 # alpine
 tzdata
 tzdata-utils # alpine
 unixodbc-dev # alpine

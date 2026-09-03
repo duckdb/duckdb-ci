@@ -25,6 +25,8 @@ BASE_IMAGE="manylinux_2_28"
 CMAKE_VERSION="${CMAKE_VERSION:-4.3.2}"
 CCACHE_VERSION="${CCACHE_VERSION:-4.13.5}"
 LCOV_VERSION="${LCOV_VERSION:-2.5}"
+RCLONE_INSTALL_VERSION="${RCLONE_INSTALL_VERSION:-1.69.3}"
+S5CMD_VERSION="${S5CMD_VERSION:-2.3.0}"
 VCPKG_COMMIT="${VCPKG_COMMIT:-84bab45d415d22042bd0b9081aea57f362da3f35}"
 REPO_PREFIX="${REPO_PREFIX:-duckdb-ci}"
 IMAGE_SUFFIX="${IMAGE_SUFFIX:-}"
@@ -74,7 +76,9 @@ build_toolchain() {
 				"${repo}" \
 				"${root}/main/Dockerfile" \
 				"." \
-				--build-arg "CPP_IMAGE=${cpp_repo}:${IMAGE_VERSION}"
+				--build-arg "CPP_IMAGE=${cpp_repo}:${IMAGE_VERSION}" \
+				--build-arg "RCLONE_INSTALL_VERSION=${RCLONE_INSTALL_VERSION}" \
+				--build-arg "S5CMD_VERSION=${S5CMD_VERSION}"
 			;;
 		cuda)
 			build_image \
