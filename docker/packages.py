@@ -44,6 +44,10 @@ class ToolArtifact:
 
 
 TOOL_CHECKS: dict[str, ToolCheck] = {
+    "cmake": ToolCheck(
+        cmd="cmake --version",
+        pattern=r"cmake version (\d+(?:\.\d+)*)",
+    ),
     "clangd-20": ToolCheck(
         cmd="clangd-20 --version",
         pattern=r"clangd version (\d+(?:\.\d+)*)",
@@ -119,7 +123,7 @@ def _parse_install_spec(raw: str) -> tuple[str, str]:
     name, version = raw.split("@", 1)
     if not name or not re.fullmatch(r"\d+(?:\.\d+)*", version):
         raise ValueError(f"invalid install specification {raw!r}; expected NAME@VERSION")
-    if name not in ("rclone", "s5cmd"):
+    if name not in ("cmake", "rclone", "s5cmd"):
         raise ValueError(f"unsupported install tool {name!r}")
 
     return name, version
@@ -307,26 +311,51 @@ def _install_binary(name: str, source: Path) -> None:
         temporary_destination.unlink(missing_ok=True)
 
 
+def _install_cmake(version: str) -> None:
+    command = [
+        sys.executable,
+        "-m",
+        "pip",
+        "install",
+        "--no-cache-dir",
+        f"cmake=={version}",
+    ]
+    if Path("/etc/alpine-release").exists():
+        command.insert(-1, "--break-system-packages")
+
+    try:
+        subprocess.run(command, check=True)
+    except (OSError, subprocess.CalledProcessError) as exc:
+        raise RuntimeError(f"failed to install cmake {version} with pip: {exc}") from exc
+
+
 def _install_tool(name: str, version: str) -> None:
     required = _parse_version(version)
     installed = _installed_version(name)
-    if installed is not None and installed >= required:
+    satisfies_requirement = installed is not None and (
+        installed == required if name == "cmake" else installed >= required
+    )
+    if satisfies_requirement:
         installed_str = ".".join(str(part) for part in installed)
-        print(f"{name} installation skipped: {installed_str} >= {version}")
+        operator = "==" if name == "cmake" else ">="
+        print(f"{name} installation skipped: {installed_str} {operator} {version}")
         return
 
-    artifact = _tool_artifact(name, version)
-    with tempfile.TemporaryDirectory(prefix=f"{name}-") as temporary_directory:
-        temporary_path = Path(temporary_directory)
-        archive = temporary_path / artifact.archive_name
-        checksum_file = temporary_path / "checksums.txt"
-        binary = temporary_path / name
+    if name == "cmake":
+        _install_cmake(version)
+    else:
+        artifact = _tool_artifact(name, version)
+        with tempfile.TemporaryDirectory(prefix=f"{name}-") as temporary_directory:
+            temporary_path = Path(temporary_directory)
+            archive = temporary_path / artifact.archive_name
+            checksum_file = temporary_path / "checksums.txt"
+            binary = temporary_path / name
 
-        _download(artifact.archive_url, archive)
-        _download(artifact.checksum_url, checksum_file)
-        _verify_checksum(archive, checksum_file)
-        _extract_binary(artifact, archive, binary)
-        _install_binary(name, binary)
+            _download(artifact.archive_url, archive)
+            _download(artifact.checksum_url, checksum_file)
+            _verify_checksum(archive, checksum_file)
+            _extract_binary(artifact, archive, binary)
+            _install_binary(name, binary)
 
     actual = _installed_version(name)
     if actual != required:

@@ -51,10 +51,10 @@ RUN set -eux; \
       bash \
       build-base \
       ccache \
-      cmake \
       libstdc++ \
     ; \
     python /usr/local/bin/packages.py check --distro alpine --packages-file /tmp/cpp_packages.txt; \
+    python /usr/local/bin/packages.py install "cmake@${CMAKE_VERSION}"; \
     git clone "https://github.com/microsoft/vcpkg.git" /vcpkg; \
     git -C /vcpkg checkout --force "${VCPKG_COMMIT}"; \
     /vcpkg/bootstrap-vcpkg.sh; \
