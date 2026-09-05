@@ -24,8 +24,8 @@ compiler-rt >= 20 # manylinux
 llvm >= 20 # manylinux
 gcc-toolset-14-libasan-devel # manylinux
 gcc-toolset-14-libtsan-devel # manylinux
-ninja # alpine
-ninja-build # manylinux
+ninja-build
+ninja-is-really-ninja # alpine
 py3-requests >= 2.20 # alpine
 py3-pytest >= 8 # alpine
 tar
