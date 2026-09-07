@@ -268,7 +268,7 @@ jobs:
           fetch_depth: "0"
 
       - name: Setup ccache
-        uses: hendrikmuhs/ccache-action@v1.2.23
+        uses: hendrikmuhs/ccache-action@v1.2.24
         with:
           max-size: 5GB
           evict-old-files: 'job'
@@ -593,7 +593,7 @@ jobs:
           path: duckdb-ci
 
       - name: Setup ccache
-        uses: hendrikmuhs/ccache-action@v1.2.23
+        uses: hendrikmuhs/ccache-action@v1.2.24
         with:
           max-size: 5GB
           evict-old-files: 'job'
@@ -653,7 +653,7 @@ jobs:
           path: duckdb-ci
 
       - name: Setup ccache
-        uses: hendrikmuhs/ccache-action@v1.2.23
+        uses: hendrikmuhs/ccache-action@v1.2.24
         with:
           max-size: 5GB
           evict-old-files: 'job'
