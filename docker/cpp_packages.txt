@@ -1,10 +1,14 @@
 # Packages shared by all cpp images
 ca-certificates
+ccache # ubuntu:24
 curl
+g++-11 >= 11 # ubuntu:24
+gcc-11 >= 11 # ubuntu:24
 git
 jq
 lcov >= 2
 libtool
+make # ubuntu:24
 mold
 perl-Capture-Tiny # manylinux
 perl-DateTime # manylinux
@@ -15,6 +19,8 @@ perl-Module-Load-Conditional # manylinux
 perl-Time-HiRes # manylinux
 perl-TimeDate # manylinux
 python3 >= 3.12
+python3-venv # ubuntu:24
+python-is-python3 # ubuntu:24
 py3-pip # alpine
 clang20 >= 20 # alpine
 compiler-rt >= 20 # alpine
@@ -31,5 +37,7 @@ py3-pytest >= 8 # alpine
 tar
 unzip
 wget
-xz
+xz # alpine
+xz # manylinux
+xz-utils # ubuntu:24
 zip

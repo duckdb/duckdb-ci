@@ -1,3 +1,3 @@
-# Python packages for manylinux cpp images
+# Python packages for cpp images that install them with pip
 pytest >= 8
 requests >= 2.20

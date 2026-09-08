@@ -48,6 +48,14 @@ TOOL_CHECKS: dict[str, ToolCheck] = {
         cmd="cmake --version",
         pattern=r"cmake version (\d+(?:\.\d+)*)",
     ),
+    "g++-11": ToolCheck(
+        cmd="g++-11 -dumpfullversion",
+        pattern=r"(\d+(?:\.\d+)*)",
+    ),
+    "gcc-11": ToolCheck(
+        cmd="gcc-11 -dumpfullversion",
+        pattern=r"(\d+(?:\.\d+)*)",
+    ),
     "clangd-20": ToolCheck(
         cmd="clangd-20 --version",
         pattern=r"clangd version (\d+(?:\.\d+)*)",
@@ -435,12 +443,16 @@ def main() -> int:
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     parser_list = subparsers.add_parser("list", help="Filter package list for a distro")
-    parser_list.add_argument("--distro", choices=("alpine", "manylinux", "ubuntu"), required=True)
+    parser_list.add_argument(
+        "--distro", choices=("alpine", "manylinux", "ubuntu:24"), required=True
+    )
     parser_list.add_argument("--packages-file", required=True)
     parser_list.set_defaults(func=_cmd_list)
 
     parser_check = subparsers.add_parser("check", help="Verify installed tooling")
-    parser_check.add_argument("--distro", choices=("alpine", "manylinux", "ubuntu"), required=True)
+    parser_check.add_argument(
+        "--distro", choices=("alpine", "manylinux", "ubuntu:24"), required=True
+    )
     parser_check.add_argument("--packages-file", required=True)
     parser_check.set_defaults(func=_cmd_check)
 

@@ -27,7 +27,7 @@ jobs:
             gh api "${api_base}/packages?package_type=container&per_page=100" >/tmp/packages.json
           fi
 
-          mapfile -t packages < <(jq -r '.[].name | select(test("^duckdb-ci/(manylinux_2_28_.*|ubuntu_24_04_amd64_lint)_dev$"))' /tmp/packages.json)
+          mapfile -t packages < <(jq -r '.[].name | select(test("^duckdb-ci/(manylinux_2_28_.*|ubuntu_24_04_amd64_(compat|lint))_dev$"))' /tmp/packages.json)
 
           if [[ ${#packages[@]} -eq 0 ]]; then
             echo "No matching _dev packages found; nothing to prune."

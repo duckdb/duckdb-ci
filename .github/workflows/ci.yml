@@ -163,7 +163,7 @@ jobs:
           REPO_PREFIX: ghcr.io/${{ github.repository_owner }}/duckdb-ci
         run: |
           set -eux -o pipefail
-          ./docker/ubuntu_24_04/build.sh amd64
+          TOOLCHAINS=lint ./docker/ubuntu_24_04/build.sh amd64
           image="${REPO_PREFIX}/ubuntu_24_04_amd64_lint${IMAGE_SUFFIX}:${IMAGE_VERSION}"
           docker push "${image}"
           echo "${image}" > "${RUNNER_TEMP}/pushed-images-ubuntu_24_04-amd64.txt"
@@ -173,6 +173,43 @@ jobs:
         with:
           name: pushed-images-ubuntu_24_04-amd64
           path: ${{ runner.temp }}/pushed-images-ubuntu_24_04-amd64.txt
+          if-no-files-found: error
+
+  build-compat-image:
+    name: Build compat image (ubuntu_24_04, amd64)
+    runs-on: namespace-profile-linux-x64
+    needs:
+      - prepare
+      - lint
+    if: ${{ needs.prepare.outputs.build_images == 'true' }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Login to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push compatibility image
+        env:
+          IMAGE_VERSION: ${{ needs.prepare.outputs.image_version }}
+          IMAGE_SUFFIX: ${{ needs.prepare.outputs.image_suffix }}
+          REPO_PREFIX: ghcr.io/${{ github.repository_owner }}/duckdb-ci
+        run: |
+          set -eux -o pipefail
+          TOOLCHAINS=compat ./docker/ubuntu_24_04/build.sh amd64
+          image="${REPO_PREFIX}/ubuntu_24_04_amd64_compat${IMAGE_SUFFIX}:${IMAGE_VERSION}"
+          docker push "${image}"
+          echo "${image}" > "${RUNNER_TEMP}/pushed-images-ubuntu_24_04-amd64-compat.txt"
+
+      - name: Upload pushed image list
+        uses: actions/upload-artifact@v7
+        with:
+          name: pushed-images-ubuntu_24_04-amd64-compat
+          path: ${{ runner.temp }}/pushed-images-ubuntu_24_04-amd64-compat.txt
           if-no-files-found: error
 
   test-image-lint:
@@ -222,6 +259,76 @@ jobs:
           make format-check-silent enum-integrity-check extension-patch-check -j -Otarget
           make generate-files
           git diff --exit-code
+
+  test-image-compat:
+    name: Verify compat container (ubuntu_24_04, amd64, gcc-11)
+    runs-on: namespace-profile-linux-x64
+    needs:
+      - prepare
+      - lint
+      - build-compat-image
+    if: ${{ needs.prepare.outputs.build_images == 'true' }}
+    container:
+      image: ghcr.io/${{ github.repository_owner }}/duckdb-ci/ubuntu_24_04_amd64_compat${{ needs.prepare.outputs.image_suffix }}:${{ needs.prepare.outputs.image_version }}
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          path: duckdb-ci
+
+      - name: Checkout DuckDB
+        uses: ./duckdb-ci/.github/actions/checkout
+        with:
+          repository: duckdb/duckdb
+          path: duckdb
+          runner_provider: namespace
+          fetch_depth: "0"
+
+      - name: Setup ccache
+        uses: hendrikmuhs/ccache-action@v1.2.23
+        with:
+          max-size: 5GB
+          evict-old-files: 'job'
+          key: ccache-ubuntu_24_04_amd64_compat
+
+      - name: Verify installed build tools
+        id: pre_build
+        shell: bash
+        run: |
+          set -eux -o pipefail
+          for tool in \
+            c++ ccache cmake curl g++ g++-11 gcc gcc-11 git jq lcov make \
+            ninja python python3 pytest; do
+            command -v "${tool}"
+          done
+          python -m pip check
+          test -x /vcpkg/vcpkg
+          test -f /vcpkg/vcpkgLastBuiltCommitId
+          echo "marker_mtime=$(stat -c %Y /vcpkg/vcpkgLastBuiltCommitId)" >> "$GITHUB_OUTPUT"
+
+      - name: Build DuckDB with GCC 11
+        uses: ./duckdb-ci/build-duckdb
+        with:
+          working-directory: duckdb
+          build: make release
+          vcpkg-commit: ${{ needs.prepare.outputs.vcpkg_commit }}
+          cache-suffix: ubuntu_24_04_amd64_compat${{ needs.prepare.outputs.image_suffix }}
+
+      - name: Verify prebuilt vcpkg was preserved
+        shell: bash
+        run: |
+          set -eux -o pipefail
+          test "$(stat -c %Y /vcpkg/vcpkgLastBuiltCommitId)" = "${{ steps.pre_build.outputs.marker_mtime }}"
+
+      - name: Test DuckDB
+        working-directory: duckdb
+        run: ./build/release/duckdb -c "PRAGMA platform; PRAGMA version;"
+
+      - name: Test GCC sanitizer toolchain
+        run: make -C duckdb-ci/docker/test/cpp test_gcc -j"$(nproc)"
 
   test-image-cpp:
     name: Verify container (${{ matrix.distro }}, ${{ matrix.arch }})
@@ -758,8 +865,10 @@ jobs:
       - test-extension-template
       - test-bot
       - build-images
+      - build-compat-image
       - build-lint-image
       - test-image-cpp
+      - test-image-compat
       - test-image-lint
       - test-compat
     runs-on: ubuntu-slim
