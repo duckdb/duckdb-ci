@@ -22,7 +22,7 @@ WORKDIR /build
 RUN set -eux; \
     apt-get update; \
     apt-get install -y --no-install-recommends python3; \
-    common_packages="$(python3 /usr/local/bin/packages.py list --distro ubuntu --packages-file /tmp/cpp_packages.txt)"; \
+    common_packages="$(python3 /usr/local/bin/packages.py list --distro ubuntu:24 --packages-file /tmp/cpp_packages.txt)"; \
     apt-get install -y --no-install-recommends ${common_packages}; \
     update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-11 110; \
     update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-11 110; \
@@ -31,8 +31,8 @@ RUN set -eux; \
     python3 -m venv /opt/duckdb-cpp-venv; \
     python -m pip install --no-cache-dir --upgrade pip; \
     python -m pip install --no-cache-dir -r /tmp/cpp_python_packages.txt; \
-    python /usr/local/bin/packages.py check --distro ubuntu --packages-file /tmp/cpp_packages.txt; \
-    python /usr/local/bin/packages.py check --distro ubuntu --packages-file /tmp/cpp_python_packages.txt; \
+    python /usr/local/bin/packages.py check --distro ubuntu:24 --packages-file /tmp/cpp_packages.txt; \
+    python /usr/local/bin/packages.py check --distro ubuntu:24 --packages-file /tmp/cpp_python_packages.txt; \
     python /usr/local/bin/packages.py install "cmake@${CMAKE_VERSION}"; \
     git clone "https://github.com/microsoft/vcpkg.git" /vcpkg; \
     git -C /vcpkg checkout --force "${VCPKG_COMMIT}"; \

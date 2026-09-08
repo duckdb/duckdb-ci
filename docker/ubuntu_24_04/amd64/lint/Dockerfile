@@ -17,9 +17,9 @@ RUN set -eux; \
     echo "deb [signed-by=/etc/apt/keyrings/apt.llvm.org.asc] https://apt.llvm.org/noble/ llvm-toolchain-noble-20 main" \
       > /etc/apt/sources.list.d/apt.llvm.org.list; \
     apt-get update; \
-    lint_packages="$(python3 /usr/local/bin/packages.py list --distro ubuntu --packages-file /tmp/lint_packages.txt)"; \
+    lint_packages="$(python3 /usr/local/bin/packages.py list --distro ubuntu:24 --packages-file /tmp/lint_packages.txt)"; \
     apt-get install -y --no-install-recommends ${lint_packages}; \
-    python3 /usr/local/bin/packages.py check --distro ubuntu --packages-file /tmp/lint_packages.txt; \
+    python3 /usr/local/bin/packages.py check --distro ubuntu:24 --packages-file /tmp/lint_packages.txt; \
     python3 -m venv /opt/duckdb-lint-venv; \
     /opt/duckdb-lint-venv/bin/python -m pip install --no-cache-dir --upgrade pip; \
     /opt/duckdb-lint-venv/bin/python -m pip install --no-cache-dir -r /tmp/lint_python_packages.txt; \
