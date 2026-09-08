@@ -48,6 +48,14 @@ TOOL_CHECKS: dict[str, ToolCheck] = {
         cmd="cmake --version",
         pattern=r"cmake version (\d+(?:\.\d+)*)",
     ),
+    "g++-11": ToolCheck(
+        cmd="g++-11 -dumpfullversion",
+        pattern=r"(\d+(?:\.\d+)*)",
+    ),
+    "gcc-11": ToolCheck(
+        cmd="gcc-11 -dumpfullversion",
+        pattern=r"(\d+(?:\.\d+)*)",
+    ),
     "clangd-20": ToolCheck(
         cmd="clangd-20 --version",
         pattern=r"clangd version (\d+(?:\.\d+)*)",
