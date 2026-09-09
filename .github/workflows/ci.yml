@@ -51,7 +51,7 @@ jobs:
           fi
           {
             echo build_images="${build_images}"
-            echo vcpkg_commit=84bab45d415d22042bd0b9081aea57f362da3f35
+            echo vcpkg_commit=cd61e1e26a038e82d6550a3ebbe0fbbfe7da78e3
             echo image_version="${image_version}"
             echo image_suffix="${image_suffix}"
           } >> "$GITHUB_OUTPUT"
