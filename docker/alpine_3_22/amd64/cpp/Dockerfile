@@ -1,5 +1,6 @@
 FROM alpine:3.22
 COPY docker/cpp_packages.txt /tmp/cpp_packages.txt
+COPY docker/cpp_python_packages.txt /tmp/cpp_python_packages.txt
 COPY docker/packages.py /usr/local/bin/packages.py
 ARG CMAKE_VERSION
 ARG CCACHE_VERSION
@@ -27,7 +28,9 @@ RUN set -eux; \
       bash \
       build-base \
       ccache; \
+    python -m pip install --break-system-packages --no-cache-dir -r /tmp/cpp_python_packages.txt; \
     python /usr/local/bin/packages.py check --distro alpine --packages-file /tmp/cpp_packages.txt; \
+    python /usr/local/bin/packages.py check --distro alpine --packages-file /tmp/cpp_python_packages.txt; \
     python /usr/local/bin/packages.py install "cmake@${CMAKE_VERSION}"; \
     git clone "https://github.com/microsoft/vcpkg.git" /vcpkg; \
     git -C /vcpkg checkout --force "${VCPKG_COMMIT}"; \
