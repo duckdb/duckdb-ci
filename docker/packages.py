@@ -64,6 +64,10 @@ TOOL_CHECKS: dict[str, ToolCheck] = {
         cmd="lcov --version",
         pattern=r"LCOV version (\d+(?:\.\d+)*)(?:-\d+)?",
     ),
+    "ninja": ToolCheck(
+        cmd="ninja --version",
+        pattern=r"(\d+(?:\.\d+)*)",
+    ),
     "python3": ToolCheck(
         cmd="python --version",
         pattern=r"(\d+\.\d+(?:\.\d+)?)",

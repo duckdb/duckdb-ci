@@ -39,6 +39,7 @@ ENV VCPKG_FORCE_SYSTEM_BINARIES=1
 ENV ASAN_SYMBOLIZER_PATH=/usr/bin/llvm-symbolizer
 
 COPY docker/cpp_packages.txt /tmp/cpp_packages.txt
+COPY docker/cpp_python_packages.txt /tmp/cpp_python_packages.txt
 COPY docker/packages.py /usr/local/bin/packages.py
 
 # Minimal C/C++ build dependencies.
@@ -53,7 +54,9 @@ RUN set -eux; \
       ccache \
       libstdc++ \
     ; \
+    python -m pip install --break-system-packages --no-cache-dir -r /tmp/cpp_python_packages.txt; \
     python /usr/local/bin/packages.py check --distro alpine --packages-file /tmp/cpp_packages.txt; \
+    python /usr/local/bin/packages.py check --distro alpine --packages-file /tmp/cpp_python_packages.txt; \
     python /usr/local/bin/packages.py install "cmake@${CMAKE_VERSION}"; \
     git clone "https://github.com/microsoft/vcpkg.git" /vcpkg; \
     git -C /vcpkg checkout --force "${VCPKG_COMMIT}"; \

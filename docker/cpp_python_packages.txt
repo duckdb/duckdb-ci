@@ -1,3 +1,4 @@
 # Python packages for cpp images that install them with pip
+ninja >= 1.13.2
 pytest >= 8
 requests >= 2.20
