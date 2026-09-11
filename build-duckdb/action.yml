@@ -34,13 +34,24 @@ inputs:
     default: "true"
 
   vcpkg-commit:
-    description: Git Commit ID used for vcpkg. Omit to skip vcpkg setup.
+    description: Git Commit ID used for vcpkg. Use "default" for the standardized version. Omit to skip vcpkg setup.
 
 runs:
   using: composite
   steps:
+    - name: Resolve vcpkg commit
+      id: resolve-vcpkg-commit
+      shell: bash
+      run: |
+        if [[ "${{ inputs.vcpkg-commit }}" == "default" ]]; then
+          # Release 2026.06.24
+          echo "vcpkg_commit=cd61e1e26a038e82d6550a3ebbe0fbbfe7da78e3" >> "$GITHUB_OUTPUT"
+        else
+          echo "vcpkg_commit=${{ inputs.vcpkg-commit }}" >> "$GITHUB_OUTPUT"
+        fi
+
     - name: Configure
-      if: ${{ inputs.vcpkg-commit != '' }}
+      if: ${{ steps.resolve-vcpkg-commit.outputs.vcpkg_commit != '' }}
       id: configure
       shell: bash
       run: |
@@ -52,7 +63,7 @@ runs:
         resolved_vcpkg_root="${VCPKG_ROOT:-${GITHUB_WORKSPACE}/vcpkg}"
         vcpkg_last_commit_path="${resolved_vcpkg_root}/vcpkgLastBuiltCommitId"
         do_not_update="false"
-        if [[ -f "${vcpkg_last_commit_path}" ]] && [[ "$(cat "${vcpkg_last_commit_path}")" == "${{ inputs.vcpkg-commit }}" ]]; then
+        if [[ -f "${vcpkg_last_commit_path}" ]] && [[ "$(cat "${vcpkg_last_commit_path}")" == "${{ steps.resolve-vcpkg-commit.outputs.vcpkg_commit }}" ]]; then
           do_not_update="true"
           echo "vcpkg marker matches requested commit; enabling doNotUpdateVcpkg"
         else
@@ -66,7 +77,7 @@ runs:
 
 
     - name: Restore vcpkg cache
-      if: ${{ inputs.vcpkg-commit != '' && inputs.cache == 'true' }}
+      if: ${{ steps.resolve-vcpkg-commit.outputs.vcpkg_commit != '' && inputs.cache == 'true' }}
       id: vcpkg-cache
       uses: actions/cache/restore@v5
       with:
@@ -76,13 +87,13 @@ runs:
           vcpkg-${{ runner.os }}-${{ inputs.build-type }}-${{ inputs.cache-suffix }}-
 
     - name: Setup vcpkg
-      if: ${{ inputs.vcpkg-commit != '' }}
+      if: ${{ steps.resolve-vcpkg-commit.outputs.vcpkg_commit != '' }}
       uses: lukka/run-vcpkg@v11
       env:
         FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
       with:
         vcpkgDirectory: ${{ steps.configure.outputs.vcpkg_root }}
-        vcpkgGitCommitId: ${{ inputs.vcpkg-commit }}
+        vcpkgGitCommitId: ${{ steps.resolve-vcpkg-commit.outputs.vcpkg_commit }}
         doNotUpdateVcpkg: ${{ steps.configure.outputs.do_not_update_vcpkg }}
         # Cache vcpkg binary to reduce impact of building from source on ARM.
         # TODO: caching logic is broken in run-vcpkg.
@@ -90,7 +101,7 @@ runs:
         # doNotCache: ${{ (runner.arch == 'ARM' || runner.arch == 'ARM64') && 'false' || '' }}
 
     - name: Reset env
-      if: ${{ inputs.vcpkg-commit != '' }}
+      if: ${{ steps.resolve-vcpkg-commit.outputs.vcpkg_commit != '' }}
       shell: bash
       run: |
         # Reset vcpkg env
@@ -117,7 +128,7 @@ runs:
       run: ${{ inputs.test }}
 
     - name: Save vcpkg cache
-      if: ${{ inputs.vcpkg-commit != '' && inputs.cache == 'true' && inputs.save-cache == 'true' && steps.vcpkg-cache.outputs.cache-hit != 'true' }}
+      if: ${{ steps.resolve-vcpkg-commit.outputs.vcpkg_commit != '' && inputs.cache == 'true' && inputs.save-cache == 'true' && steps.vcpkg-cache.outputs.cache-hit != 'true' }}
       uses: actions/cache/save@v5
       with:
         path: ${{ github.workspace }}/vcpkg-cache
