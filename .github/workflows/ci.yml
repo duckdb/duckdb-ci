@@ -70,11 +70,11 @@ jobs:
           - distro: manylinux_2_28
             arch: amd64
             runs_on: namespace-profile-linux-x64
-            dependent_toolchains: rust cuda
+            dependent_toolchains: rust cuda12 cuda13
           - distro: manylinux_2_28
             arch: aarch64
             runs_on: namespace-profile-linux-arm64
-            dependent_toolchains: rust cuda
+            dependent_toolchains: rust cuda12 cuda13
           - distro: alpine_3_22
             arch: amd64
             runs_on: namespace-profile-linux-x64

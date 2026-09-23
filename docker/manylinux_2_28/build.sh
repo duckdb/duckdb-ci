@@ -20,7 +20,6 @@ if [[ -z "${IMAGE_VERSION:-}" ]]; then
 	exit 1
 fi
 
-CUDA_VERSION="13"
 BASE_IMAGE="manylinux_2_28"
 CMAKE_VERSION="${CMAKE_VERSION:-4.4.3}"
 CCACHE_VERSION="${CCACHE_VERSION:-4.13.5}"
@@ -30,7 +29,7 @@ S5CMD_VERSION="${S5CMD_VERSION:-2.3.0}"
 VCPKG_COMMIT="${VCPKG_COMMIT:-cd61e1e26a038e82d6550a3ebbe0fbbfe7da78e3}"
 REPO_PREFIX="${REPO_PREFIX:-duckdb-ci}"
 IMAGE_SUFFIX="${IMAGE_SUFFIX:-}"
-TOOLCHAINS_INPUT="${TOOLCHAINS:-cpp test main rust cuda}"
+TOOLCHAINS_INPUT="${TOOLCHAINS:-cpp test main rust cuda12 cuda13}"
 read -r -a TOOLCHAINS <<< "${TOOLCHAINS_INPUT}"
 
 build_image() {
@@ -80,13 +79,13 @@ build_toolchain() {
 				--build-arg "RCLONE_INSTALL_VERSION=${RCLONE_INSTALL_VERSION}" \
 				--build-arg "S5CMD_VERSION=${S5CMD_VERSION}"
 			;;
-		cuda)
+		cuda12|cuda13)
 			build_image \
 				"${repo}" \
 				"${root}/cuda/Dockerfile" \
 				"." \
 				--build-arg "CPP_IMAGE=${cpp_repo}:${IMAGE_VERSION}" \
-				--build-arg "CUDA_VERSION=${CUDA_VERSION}"
+				--build-arg "CUDA_VERSION=${toolchain#"cuda"}"
 			;;
 		*)
 			echo "Unknown toolchain: ${toolchain}" >&2
