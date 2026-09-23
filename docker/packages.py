@@ -118,6 +118,14 @@ TOOL_CHECKS: dict[str, ToolCheck] = {
         cmd="llvm-symbolizer --version",
         pattern=r"LLVM version (\d+(?:\.\d+)*)",
     ),
+    "lld": ToolCheck(
+        cmd="ld.lld --version",
+        pattern=r"LLD (\d+(?:\.\d+)*)",
+    ),
+    "lld20": ToolCheck(
+        cmd="ld.lld --version",
+        pattern=r"LLD (\d+(?:\.\d+)*)",
+    ),
 }
 
 
