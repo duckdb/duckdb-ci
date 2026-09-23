@@ -16,7 +16,7 @@ This directory defines split DuckDB build images for two architectures:
 - `duckdb-ci/manylinux_2_28_amd64_cuda13`
 
 For each architecture, `cpp` and `test` use the distro base image directly,
-`main` and `cuda` inherit from `cpp`, and `rust` inherits from `main`.
+`main`, `cuda12` and `cuda13` inherit from `cpp`, and `rust` inherits from `main`.
 
 ## Build locally
 
@@ -30,5 +30,4 @@ Image tags are generated automatically as `:YYYYMMDD-<gitsha>`.
 
 ## Notes
 
-- CUDA version is fixed to `13` in the build script.
 - vcpkg setup stays in CI (`lukka/run-vcpkg`), not in these images.
