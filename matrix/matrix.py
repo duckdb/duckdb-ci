@@ -404,7 +404,7 @@ def parse_groups(raw: str | None) -> tuple[ExtensionGroup, ...]:
         toolchain = config["toolchain"]
         if not isinstance(toolchain, str) or not toolchain:
             raise MatrixError(f"group {key!r} toolchain must be a non-empty string")
-        supported_toolchains = {"main", "rust", "cuda"}
+        supported_toolchains = {"main", "rust", "cuda12", "cuda13"}
         if toolchain not in supported_toolchains:
             raise MatrixError(f"group {key!r} has unsupported toolchain: {toolchain!r}")
         for field in ("default_exclude_archs", "extra_toolchains", "opt_in_archs"):
@@ -493,10 +493,10 @@ def build_job(
     image_version: str,
 ) -> BuildJob:
     duckdb_arch = str(entry["duckdb_arch"])
-    if group.toolchain == "cuda" and (
+    if group.toolchain in ("cuda12", "cuda13") and (
         not duckdb_arch.startswith("linux_") or duckdb_arch.endswith("_musl")
     ):
-        raise MatrixError(f"cuda toolchain does not support architecture {duckdb_arch!r}")
+        raise MatrixError(f"{group.toolchain} toolchain does not support architecture {duckdb_arch!r}")
     prefix = f"{group.key}-extensions"
     osx_build_arch = str(entry["osx_build_arch"]) if "osx_build_arch" in entry else None
     container_name: str | None = None

@@ -6,12 +6,14 @@ This directory defines split DuckDB build images for two architectures:
 - `duckdb-ci/manylinux_2_28_aarch64_test`
 - `duckdb-ci/manylinux_2_28_aarch64_main`
 - `duckdb-ci/manylinux_2_28_aarch64_rust`
-- `duckdb-ci/manylinux_2_28_aarch64_cuda`
+- `duckdb-ci/manylinux_2_28_aarch64_cuda12`
+- `duckdb-ci/manylinux_2_28_aarch64_cuda13`
 - `duckdb-ci/manylinux_2_28_amd64_cpp`
 - `duckdb-ci/manylinux_2_28_amd64_test`
 - `duckdb-ci/manylinux_2_28_amd64_main`
 - `duckdb-ci/manylinux_2_28_amd64_rust`
-- `duckdb-ci/manylinux_2_28_amd64_cuda`
+- `duckdb-ci/manylinux_2_28_amd64_cuda12`
+- `duckdb-ci/manylinux_2_28_amd64_cuda13`
 
 For each architecture, `cpp` and `test` use the distro base image directly,
 `main` and `cuda` inherit from `cpp`, and `rust` inherits from `main`.

@@ -260,10 +260,10 @@ def test_linux_container_fields_use_fixed_image_owner_without_suffix(tmp_path):
 def test_cuda_builds_select_cuda_test_container_and_aggregate_toolchains():
     matrices = compute_matrices(
         load_repo_config(),
-        groups="""cuda:
+        groups="""cuda13:
   config: .github/config/cuda_extensions.cmake
   default_exclude_archs: linux_amd64_musl;linux_arm64_musl;osx_amd64;osx_arm64;windows_amd64;windows_arm64;windows_amd64_mingw;wasm_mvp;wasm_eh;wasm_threads
-  toolchain: cuda
+  toolchain: cuda13
 main:
   config: .github/config/in_tree_extensions.cmake
   toolchain: main
@@ -273,11 +273,11 @@ main:
     )
 
     cuda_build = matrices.build.linux.get(
-        arch="linux_amd64", prefix="cuda-extensions"
+        arch="linux_amd64", prefix="cuda13-extensions"
     )
-    assert cuda_build.container_name == "manylinux_2_28_amd64_cuda"
+    assert cuda_build.container_name == "manylinux_2_28_amd64_cuda13"
     linux_test = matrices.test.linux.get(arch="linux_amd64")
-    assert linux_test.toolchains == ("cuda", "main")
+    assert linux_test.toolchains == ("cuda13", "main")
     assert linux_test.container_name == "manylinux_2_28_amd64_main"
     assert linux_test.container == (
         "ghcr.io/duckdb/duckdb-ci/manylinux_2_28_amd64_main:20260528-fbcf3036"
@@ -287,13 +287,13 @@ main:
 def test_cuda_toolchain_rejects_unsupported_architectures():
     with pytest.raises(
         MatrixError,
-        match="cuda toolchain does not support architecture 'osx_amd64'",
+        match="cuda13 toolchain does not support architecture 'osx_amd64'",
     ):
         compute_matrices(
             load_repo_config(),
-            groups="""cuda:
+            groups="""cuda13:
   config: .github/config/cuda_extensions.cmake
-  toolchain: cuda
+  toolchain: cuda13
 """,
             reduced_ci_mode="disabled",
         )
