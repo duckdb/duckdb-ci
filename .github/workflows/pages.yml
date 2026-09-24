@@ -7,6 +7,8 @@ on:
     paths:
       - coverage/**
       - .github/workflows/pages.yml
+  schedule:
+    - cron: "0 4 * * *"
   workflow_dispatch:
 
 permissions:
@@ -33,11 +35,73 @@ jobs:
       - name: Configure Pages
         uses: actions/configure-pages@v6
 
-      - name: Prepare site
+      - name: Discover DuckDB branches
+        id: duckdb
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          set -eux -o pipefail
-          mkdir -p _site
-          cp -R coverage _site/coverage
+          set -euo pipefail
+
+          default_branch="$(gh api repos/duckdb/duckdb --jq .default_branch)"
+          duckdb_branches="$(
+            gh api --paginate repos/duckdb/duckdb/branches --jq '.[].name' | sort -u
+          )"
+          supported_branches=()
+          default_branch_supported=false
+          while IFS= read -r branch; do
+            if [[ "$branch" == "main" || "$branch" =~ ^v([2-9]|[1-9][0-9]+)\.[0-9]+-[[:alnum:]_.-]+$ ]]; then
+              supported_branches+=("$branch")
+              if [[ "$branch" == "$default_branch" ]]; then
+                default_branch_supported=true
+              fi
+            fi
+          done <<< "$duckdb_branches"
+
+          if [[ "$default_branch_supported" != "true" ]]; then
+            echo "DuckDB default branch '$default_branch' is not a supported coverage branch" >&2
+            exit 1
+          fi
+
+          {
+            echo "default_branch=$default_branch"
+            echo "branches<<EOF"
+            printf '%s\n' "${supported_branches[@]}"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Prepare site
+        env:
+          DEFAULT_BRANCH: ${{ steps.duckdb.outputs.default_branch }}
+          DUCKDB_BRANCHES: ${{ steps.duckdb.outputs.branches }}
+        run: |
+          set -euo pipefail
+
+          mkdir -p _site/coverage
+          while IFS= read -r branch; do
+            if [[ -z "$branch" ]]; then
+              continue
+            fi
+            mkdir -p "_site/coverage/$branch"
+            cp -R coverage/. "_site/coverage/$branch/"
+          done <<< "$DUCKDB_BRANCHES"
+
+          cat > _site/coverage/index.html <<EOF
+          <!doctype html>
+          <html lang="en">
+          <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <title>DuckDB coverage</title>
+          </head>
+          <body>
+            <script>
+              window.location.replace("./$DEFAULT_BRANCH/" + window.location.search + window.location.hash);
+            </script>
+            <p><a href="./$DEFAULT_BRANCH/">Open the DuckDB coverage report</a></p>
+          </body>
+          </html>
+          EOF
+
           touch _site/.nojekyll
 
       - name: Upload Pages artifact

@@ -1,9 +1,9 @@
 (function () {
   "use strict";
 
-  var CACHE_NAME = "duckdb-coverage-report-v1";
+  var CACHE_PREFIX = "duckdb-coverage-report-v2-";
   var DEFAULT_NAME = "linux-release-default-tests";
-  var ARTIFACT_BASE = "https://artifacts.duckdb.org/latest/";
+  var ARTIFACT_BASE = "https://artifacts.duckdb.org/";
   var PARALLEL_DOWNLOAD_RANGES = 8;
 
   var statusPanel = document.getElementById("status-panel");
@@ -18,14 +18,23 @@
     return new URL(".", window.location.href).pathname;
   }
 
+  function getBranch(basePath) {
+    var parts = basePath.split("/").filter(Boolean);
+    return decodeURIComponent(parts[parts.length - 1]);
+  }
+
+  function getCacheName(basePath) {
+    return CACHE_PREFIX + basePath;
+  }
+
   function getReportName() {
     var params = new URLSearchParams(window.location.search);
     var name = params.get("name") || DEFAULT_NAME;
     return name.trim() || DEFAULT_NAME;
   }
 
-  function getArtifactUrl(name) {
-    return ARTIFACT_BASE + "coverage-" + encodeURIComponent(name) + ".zip";
+  function getArtifactUrl(branch, name) {
+    return ARTIFACT_BASE + encodeURIComponent(branch) + "/coverage-" + encodeURIComponent(name) + ".zip";
   }
 
   function setStatus(message, detail, progressValue) {
@@ -67,13 +76,26 @@
     });
   }
 
-  async function registerServiceWorker() {
+  async function registerServiceWorker(basePath) {
     if (!("serviceWorker" in navigator)) {
       throw new Error("This browser does not support service workers.");
     }
+
+    var expectedScriptUrl = new URL(basePath + "sw.js", window.location.origin).href;
+    var controller = navigator.serviceWorker.controller;
+    if (controller && controller.scriptURL !== expectedScriptUrl) {
+      var legacyRegistration = await navigator.serviceWorker.getRegistration();
+      if (legacyRegistration) {
+        await legacyRegistration.unregister();
+      }
+      window.location.reload();
+      return false;
+    }
+
     await navigator.serviceWorker.register("sw.js");
     await navigator.serviceWorker.ready;
     await waitForController();
+    return true;
   }
 
   function updateDownloadStatus(received, contentLength) {
@@ -299,7 +321,7 @@
       throw new Error("The artifact does not contain index.html at the zip root.");
     }
 
-    var cache = await caches.open(CACHE_NAME);
+    var cache = await caches.open(getCacheName(basePath));
     var keys = await cache.keys();
     await Promise.all(keys.map(function (request) {
       return cache.delete(request);
@@ -328,11 +350,14 @@
   async function load() {
     var name = getReportName();
     var basePath = getBasePath();
-    var artifactUrl = getArtifactUrl(name);
+    var branch = getBranch(basePath);
+    var artifactUrl = getArtifactUrl(branch, name);
     reportBasePath = basePath;
 
     try {
-      await registerServiceWorker();
+      if (!await registerServiceWorker(basePath)) {
+        return;
+      }
     } catch (error) {
       showError("Service worker registration failed", error);
       return;
