@@ -3,6 +3,7 @@
 
   var CACHE_PREFIX = "duckdb-coverage-report-v2-";
   var DEFAULT_NAME = "linux-release-default-tests";
+  var DEFAULT_REPORT_TITLE = "LCOV - code coverage report";
   var ARTIFACT_BASE = "https://artifacts.duckdb.org/";
   var PARALLEL_DOWNLOAD_RANGES = 8;
 
@@ -35,6 +36,23 @@
 
   function getArtifactUrl(branch, name) {
     return ARTIFACT_BASE + encodeURIComponent(branch) + "/coverage-" + encodeURIComponent(name) + ".zip";
+  }
+
+  function updateReportTitle(branch) {
+    var reportDocument = reportFrame.contentDocument;
+    if (!reportDocument) {
+      return;
+    }
+
+    var title = reportDocument.querySelector("td.title");
+    if (!title || title.textContent.trim() !== DEFAULT_REPORT_TITLE) {
+      return;
+    }
+
+    var branchName = reportDocument.createElement("strong");
+    branchName.textContent = branch;
+    title.textContent = "Code coverage of ";
+    title.appendChild(branchName);
   }
 
   function setStatus(message, detail, progressValue) {
@@ -352,6 +370,7 @@
     var basePath = getBasePath();
     var branch = getBranch(basePath);
     var artifactUrl = getArtifactUrl(branch, name);
+    document.title = "Code coverage of " + branch;
     reportBasePath = basePath;
 
     try {
@@ -393,6 +412,7 @@
     reportFrame.addEventListener("load", function () {
       var reportHash;
       try {
+        updateReportTitle(branch);
         reportHash = getHashFromReportUrl(new URL(reportFrame.contentWindow.location.href), basePath);
       } catch (error) {
         return;
