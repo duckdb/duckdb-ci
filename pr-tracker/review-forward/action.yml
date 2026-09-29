@@ -1,0 +1,52 @@
+name: Forward review activity to pr-tracker
+description: >-
+  React to a "Review relay" workflow_run, resolve the PR it belongs to (by head SHA,
+  since workflow_run misreports the head repo for fork PRs), and dispatch a
+  review_activity hint to pr-tracker. Centralized so the resolution logic isn't
+  copied into every tracked repo.
+
+inputs:
+  token:
+    description: Dispatch token — Contents RW on the tracker repo only. Passed in; never stored here.
+    required: true
+  lookup_token:
+    description: >-
+      Token to read THIS repo's open PRs. The built-in GITHUB_TOKEN suffices; the
+      dispatch token is scoped to the tracker repo and can't read here.
+    required: true
+  tracker_repo:
+    description: The pr-tracker repository to dispatch to.
+    required: false
+    default: duckdblabs/pr-tracker
+
+runs:
+  using: composite
+  steps:
+    - name: Resolve PR number and dispatch review_activity
+      shell: bash
+      env:
+        GITHUB_LOOKUP_TOKEN: ${{ inputs.lookup_token }}
+        DISPATCH_TOKEN: ${{ inputs.token }}
+        TRACKER_REPO: ${{ inputs.tracker_repo }}
+        REPO: ${{ github.repository }}
+        HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+      run: |
+        set -euo pipefail
+        if ! [[ "$HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+          echo "unexpected head_sha ($HEAD_SHA); skipping"; exit 0
+        fi
+        # The dispatch token can't read this repo, so use the lookup token to find the PR.
+        open_prs=$(GH_TOKEN="$GITHUB_LOOKUP_TOKEN" gh api --paginate \
+          "/repos/$REPO/pulls?state=open&per_page=100" -q '.[]' | jq -s '.' || echo '[]')
+        number=$(printf '%s' "$open_prs" | jq -r --arg sha "$HEAD_SHA" --arg br "$HEAD_BRANCH" \
+          '(map(select(.head.sha==$sha)) + map(select(.head.ref==$br))) | .[0].number // empty')
+        if ! [[ "$number" =~ ^[0-9]+$ ]]; then
+          echo "no open PR matched head_sha $HEAD_SHA (branch $HEAD_BRANCH); skipping"; exit 0
+        fi
+        echo "resolved PR #$number for head_sha $HEAD_SHA; dispatching review_activity"
+        jq -n --arg repo "$REPO" --argjson number "$number" \
+          '{event_type: "pr-event", client_payload: {
+             event: "review_activity", repo: $repo, number: $number
+           }}' \
+        | GH_TOKEN="$DISPATCH_TOKEN" gh api -X POST "/repos/$TRACKER_REPO/dispatches" --input -
