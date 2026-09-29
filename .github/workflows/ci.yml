@@ -322,6 +322,8 @@ jobs:
         run: |
           set -eux -o pipefail
           test "$(stat -c %Y /vcpkg/vcpkgLastBuiltCommitId)" = "${{ steps.pre_build.outputs.marker_mtime }}"
+          test "${VCPKG_DEFAULT_BINARY_CACHE}" = "${GITHUB_WORKSPACE}/vcpkg-cache"
+          test "${VCPKG_BINARY_SOURCES}" = "clear;files,${GITHUB_WORKSPACE}/vcpkg-cache,readwrite"
 
       - name: Test DuckDB
         working-directory: duckdb
@@ -404,6 +406,8 @@ jobs:
         run: |
           set -eux -o pipefail
           test "$(stat -c %Y /vcpkg/vcpkgLastBuiltCommitId)" = "${{ steps.pre_build.outputs.marker_mtime }}"
+          test "${VCPKG_DEFAULT_BINARY_CACHE}" = "${GITHUB_WORKSPACE}/vcpkg-cache"
+          test "${VCPKG_BINARY_SOURCES}" = "clear;files,${GITHUB_WORKSPACE}/vcpkg-cache,readwrite"
 
       - name: Test DuckDB
         working-directory: duckdb
