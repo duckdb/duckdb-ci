@@ -12,6 +12,7 @@ import argparse
 import os
 import re
 import subprocess
+import shutil
 import sys
 import tempfile
 
@@ -24,7 +25,7 @@ EXTENSION_CONFIG_PATH = "extension_config.cmake"
 # Marks this script's commits: any other commit on the bump branch is a human's, and is kept
 TRAILER = "Bumped-By: duckdb-ci extension-bump"
 # Comments are consumed whole, as they can contain parentheses and argument names
-EXTENSION_LOAD_BLOCK = re.compile(r'duckdb_extension_load\(\s*(?P<name>\w+)(?P<body>(?:#[^\n]*|[^)#])*)\)')
+EXTENSION_LOAD_BLOCK = re.compile(r'^[ \t]*duckdb_extension_load\(\s*(?P<name>\w+)(?P<body>(?:#[^\n]*|[^)#])*)\)', re.M)
 GIT_TAG_ARG = re.compile(r'^(?P<lead>[ \t]*GIT_TAG[ \t]+)(?P<value>\S+)', re.M)
 GIT_URL_ARG = re.compile(r'^[ \t]*GIT_URL[ \t]+(?P<value>\S+)', re.M)
 CMAKE_COMMENT = re.compile(r'#[^\n]*')
@@ -76,6 +77,9 @@ class DuckDB:
         res = run("git", "-C", self.dir, "show", f"{self.sha}:{path}", check=False)
         return res.stdout if res.returncode == 0 else None
 
+    def cleanup(self):
+        shutil.rmtree(self.dir, ignore_errors=True)
+
 
 def extension_name(override):
     """The extension's own name: the duckdb_extension_load whose SOURCE_DIR is this repository.
@@ -83,10 +87,13 @@ def extension_name(override):
     extensions have a GIT_URL instead."""
     if override:
         return override
+    if not os.path.exists(EXTENSION_CONFIG_PATH):
+        raise BumpError(f"no {EXTENSION_CONFIG_PATH} here: run from the extension's root, or pass --name")
     with open(EXTENSION_CONFIG_PATH) as f:
         content = f.read()
-    own = [b.group("name") for b in EXTENSION_LOAD_BLOCK.finditer(content)
-           if OWN_SOURCE_DIR.search(CMAKE_COMMENT.sub("", b.group("body")))]
+    # A config can load its own extension in both branches of an if()
+    own = sorted({b.group("name") for b in EXTENSION_LOAD_BLOCK.finditer(content)
+                  if OWN_SOURCE_DIR.search(CMAKE_COMMENT.sub("", b.group("body")))})
     if len(own) != 1:
         raise BumpError(f"expected one duckdb_extension_load with SOURCE_DIR ${{CMAKE_CURRENT_LIST_DIR}} in "
                         f"{EXTENSION_CONFIG_PATH}, found {own or 'none'}; pass --name")
@@ -199,7 +206,7 @@ def commit(message):
     return True
 
 
-def apply_patches(duckdb, name, patches, branch):
+def apply_patches(duckdb, name, patches, branch, restore):
     """Apply patches on the commit duckdb pins for this extension (they're authored against it),
     then carry the result onto the branch tip. Returns the patches that changed something."""
     if not patches:
@@ -209,6 +216,7 @@ def apply_patches(duckdb, name, patches, branch):
         raise BumpError(f"duckdb {duckdb.sha[:10]} has no config with a GIT_TAG for {name}")
     pinned = pin[1]
     applied, patched = [], None
+    patch_dir = tempfile.mkdtemp(prefix="duckdb-patches-")
     git("checkout", "-q", "--detach", pinned)
     try:
         for patch in patches:
@@ -218,7 +226,7 @@ def apply_patches(duckdb, name, patches, branch):
             # git apply rejects a patch whose final line has no newline as corrupt
             if not data.endswith(b"\n"):
                 data += b"\n"
-            with tempfile.NamedTemporaryFile(suffix=".patch", delete=False) as f:
+            with open(os.path.join(patch_dir, patch), "wb") as f:
                 f.write(data)
             if run("git", "apply", "--index", f.name, check=False).returncode == 0:
                 applied.append(patch)
@@ -230,7 +238,9 @@ def apply_patches(duckdb, name, patches, branch):
         if commit(f"Apply patches from duckdb {duckdb.sha[:10]}"):
             patched = git("rev-parse", "HEAD")
     finally:
-        git("checkout", "-q", "--force", branch)
+        # Back to exactly where the run started: the branch it was on, or the detached commit
+        git("checkout", "-q", "--force", restore)
+        shutil.rmtree(patch_dir, ignore_errors=True)
     if patched is None:
         return []
     if run("git", "cherry-pick", patched, check=False).returncode != 0:
@@ -254,6 +264,10 @@ def carry_human_commits(bump_branch, branch):
     base = git("merge-base", "FETCH_HEAD", f"origin/{branch}")
     for sha in git("rev-list", "--reverse", "--no-merges", f"{base}..FETCH_HEAD").split():
         if TRAILER in git("log", "-1", "--format=%B", sha):
+            author, committer = git("log", "-1", "--format=%ae|%ce", sha).split("|")
+            if author != committer:
+                print(f"::warning::{sha[:10]} is a bump commit that {committer} changed; that change is dropped "
+                      "by this bump -- push it again as a commit of its own")
             continue
         if run("git", "cherry-pick", sha, check=False).returncode == 0:
             continue
@@ -302,12 +316,20 @@ def main():
     if git("status", "--porcelain", "--untracked-files=no", "--ignore-submodules=all"):
         raise BumpError("the checkout has uncommitted changes")
     start = git("rev-parse", "HEAD")
+    restore = git("symbolic-ref", "-q", "--short", "HEAD", check=False) or start
 
     duckdb = DuckDB(args.duckdb)
+    try:
+        return bump(args, name, branch, start, restore, duckdb)
+    finally:
+        duckdb.cleanup()
+
+
+def bump(args, name, branch, start, restore, duckdb):
     label = args.duckdb_version or duckdb.sha[:10]
     patches = [p for p in args.patches.split(",") if p]
 
-    applied = apply_patches(duckdb, name, patches, branch)
+    applied = apply_patches(duckdb, name, patches, branch, restore)
     ci_ref = ci_tools_ref()
     ci_sha = remote_branch_sha(CI_TOOLS_URL, ci_ref)
     bump_submodule("duckdb", duckdb.sha)
@@ -333,8 +355,13 @@ def main():
 
     bump_branch = f"duckdb-bump/{branch}"
     slug = repo_slug()
-    old, conflict = carry_human_commits(bump_branch, branch)
     number = open_pr_number(slug, bump_branch, branch)
+    if number:
+        old, conflict = carry_human_commits(bump_branch, branch)
+    else:
+        # No open PR: whatever is left on the bump branch (e.g. after a squash-merge) is stale,
+        # so the branch starts over from this bump
+        old, conflict = remote_branch_sha("origin", bump_branch), False
     if conflict:
         message = (f"DuckDB `{duckdb.sha[:10]}` ({label}) is available, but the commits pushed to this "
                    f"branch by hand don't rebase onto it. Resolve them, or remove them, to pick it up.")
@@ -344,6 +371,13 @@ def main():
         summary(f"{name}: not updated, manual commits conflict with {duckdb.sha[:10]}")
         return 0
 
+    if old:
+        git("fetch", "-q", "origin", f"refs/heads/{bump_branch}")
+    if old and number and git("rev-parse", "HEAD^{tree}") == git("rev-parse", f"{old}^{{tree}}"):
+        # Same content as the open PR already has: a push would only re-run its CI
+        print(f"{name}: https://github.com/{slug}/pull/{number} already has duckdb {duckdb.sha[:10]}")
+        summary(f"{name}: up to date")
+        return 0
     git("push", "-q", f"--force-with-lease=refs/heads/{bump_branch}:{old}", "origin", f"HEAD:refs/heads/{bump_branch}")
     title = f"[AUTOMATED_BUMP] Bump duckdb to {label}"
     body = (f"Bumps the duckdb submodule to `{duckdb.sha[:10]}` ({label}) and extension-ci-tools to "
