@@ -78,9 +78,10 @@ runs:
       uses: actions/cache/restore@v5
       with:
         path: ${{ github.workspace }}/vcpkg-cache
-        key: vcpkg-${{ runner.os }}-${{ inputs.build-type }}-${{ inputs.cache-suffix }}-${{ hashFiles(format('{0}/build/extension_configuration/vcpkg.json', inputs.working-directory)) }}
+        # Save immutable snapshots while restoring the latest compatible prefix.
+        key: vcpkg-v2-${{ runner.os }}-${{ inputs.build-type }}-${{ inputs.cache-suffix }}-${{ steps.configure.outputs.vcpkg_commit }}-${{ github.run_id }}-${{ github.run_attempt }}
         restore-keys: |
-          vcpkg-${{ runner.os }}-${{ inputs.build-type }}-${{ inputs.cache-suffix }}-
+          vcpkg-v2-${{ runner.os }}-${{ inputs.build-type }}-${{ inputs.cache-suffix }}-${{ steps.configure.outputs.vcpkg_commit }}-
 
     - name: Setup vcpkg
       if: ${{ steps.configure.outputs.vcpkg_commit != '' }}
@@ -105,10 +106,12 @@ runs:
         env | grep VCPKG
         echo "::endgroup::"
 
+        # github.workspace is a host path in container jobs.
+        cache_path="${GITHUB_WORKSPACE}/vcpkg-cache"
         {
           echo "VCPKG_TOOLCHAIN_PATH=${{ steps.configure.outputs.vcpkg_root }}/scripts/buildsystems/vcpkg.cmake";
-          echo VCPKG_DEFAULT_BINARY_CACHE="${{ github.workspace }}/vcpkg-cache";
-          echo VCPKG_BINARY_SOURCES="clear;files,${{ github.workspace }}/vcpkg-cache,readwrite";
+          echo "VCPKG_DEFAULT_BINARY_CACHE=${cache_path}";
+          echo "VCPKG_BINARY_SOURCES=clear;files,${cache_path},readwrite";
           echo USE_MERGED_VCPKG_MANIFEST=1;
         } >> "$GITHUB_ENV"
 
