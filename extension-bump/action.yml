@@ -1,0 +1,41 @@
+name: "Extension bump"
+description: "Bump the calling extension to a DuckDB commit, apply duckdb's patches, and open or update its bump PR"
+
+inputs:
+  duckdb:
+    description: "DuckDB commit (full SHA) or tag to move to"
+    required: true
+  duckdb-version:
+    description: "Label for commit and PR titles, e.g. v2.0.0"
+    default: ""
+  patches:
+    description: "Comma-separated duckdb patch file names to apply"
+    default: ""
+  token:
+    description: "Token that can push this repository and open PRs. Not GITHUB_TOKEN: its pushes and PRs don't trigger CI"
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    # Not prepare-extension: it persists GITHUB_TOKEN, and pushes made with that don't trigger
+    # the PR's CI. The bump script reads duckdb itself, so no submodules are needed here.
+    - name: Checkout
+      uses: actions/checkout@v6
+      with:
+        ref: ${{ github.ref_name }}
+        fetch-depth: 0
+        token: ${{ inputs.token }}
+
+    - name: Bump
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        DUCKDB: ${{ inputs.duckdb }}
+        DUCKDB_VERSION: ${{ inputs.duckdb-version }}
+        PATCHES: ${{ inputs.patches }}
+      run: |
+        set -euo pipefail
+        git config user.name "DuckDB Labs GitHub Bot"
+        git config user.email "github_bot@duckdblabs.com"
+        python3 "$GITHUB_ACTION_PATH/extension_bump.py" --duckdb "$DUCKDB" --duckdb-version "$DUCKDB_VERSION" --patches "$PATCHES" --make-pr
