@@ -2,11 +2,11 @@
 """Bump the extension checked out in the current directory to a DuckDB commit.
 
 Run it from the extension's root, by hand, from duckdb-automations' driver, or in CI through the
-extension-bump action; all three do the same thing. The caller decides the DuckDB commit and
+bump-duckdb action; all three do the same thing. The caller decides the DuckDB commit and
 which of duckdb's patches to apply; everything else is read from the checkout. Without
 --make-pr it only commits locally.
 
-    python3 ../extension_bump.py --duckdb <sha|tag> [--duckdb-version v2.0.0] [--patches a.patch,b.patch] [--make-pr]
+    python3 ../bump_duckdb.py --duckdb <sha|tag> [--duckdb-version v2.0.0] [--patches a.patch,b.patch] [--make-pr]
 """
 import argparse
 import os
@@ -23,7 +23,7 @@ PIPELINE_PATH = ".github/workflows/MainDistributionPipeline.yml"
 DUCKDB_VERSION_PATH = ".github/duckdb-version"
 EXTENSION_CONFIG_PATH = "extension_config.cmake"
 # Marks this script's commits: any other commit on the bump branch is a human's, and is kept
-TRAILER = "Bumped-By: duckdb-ci extension-bump"
+TRAILER = "Bumped-By: duckdb-ci bump-duckdb"
 # Comments are consumed whole, as they can contain parentheses and argument names
 EXTENSION_LOAD_BLOCK = re.compile(r'^[ \t]*duckdb_extension_load\(\s*(?P<name>\w+)(?P<body>(?:#[^\n]*|[^)#])*)\)', re.M)
 GIT_TAG_ARG = re.compile(r'^(?P<lead>[ \t]*GIT_TAG[ \t]+)(?P<value>\S+)', re.M)
@@ -382,7 +382,7 @@ def bump(args, name, branch, start, restore, duckdb):
     title = f"[AUTOMATED_BUMP] Bump duckdb to {label}"
     body = (f"Bumps the duckdb submodule to `{duckdb.sha[:10]}` ({label}) and extension-ci-tools to "
             f"`{ci_ref}`.\n\nPatches applied from duckdb: {', '.join(applied) or 'none'}\n\n"
-            "Opened by duckdb-ci's extension-bump. Commits pushed to this branch by hand are kept: "
+            "Opened by duckdb-ci's bump-duckdb. Commits pushed to this branch by hand are kept: "
             "each new bump rebases them.")
     if number:
         gh_api("-X", "PATCH", f"repos/{slug}/pulls/{number}", "-f", f"title={title}", "-f", f"body={body}")
