@@ -1,4 +1,4 @@
-name: "Extension bump"
+name: "Bump DuckDB"
 description: "Bump the calling extension to a DuckDB commit, apply duckdb's patches, and open or update its bump PR"
 
 inputs:
@@ -38,4 +38,4 @@ runs:
         set -euo pipefail
         git config user.name "DuckDB Labs GitHub Bot"
         git config user.email "github_bot@duckdblabs.com"
-        python3 "$GITHUB_ACTION_PATH/extension_bump.py" --duckdb "$DUCKDB" --duckdb-version "$DUCKDB_VERSION" --patches "$PATCHES" --make-pr
+        python3 "$GITHUB_ACTION_PATH/bump_duckdb.py" --duckdb "$DUCKDB" --duckdb-version "$DUCKDB_VERSION" --patches "$PATCHES" --make-pr
