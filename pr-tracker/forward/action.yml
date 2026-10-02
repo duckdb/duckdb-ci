@@ -1,0 +1,59 @@
+name: Forward PR event to pr-tracker
+description: >-
+  Normalize the current GitHub event and repository_dispatch it to pr-tracker.
+  All forwarding logic lives here, so
+  changes reach every tracked repo without editing each one.
+
+inputs:
+  token:
+    description: >-
+      Dispatch token — Contents RW on the tracker repo only (the minimum
+      repository_dispatch needs). Passed in by the caller; never stored here.
+    required: true
+  tracker_repo:
+    description: The pr-tracker repository to dispatch to.
+    required: false
+    default: duckdblabs/pr-tracker
+
+runs:
+  using: composite
+  steps:
+    - name: Forward the event to pr-tracker
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        TRACKER_REPO: ${{ inputs.tracker_repo }}
+      run: |
+        set -euo pipefail
+        payload="$GITHUB_EVENT_PATH"          # full event JSON, written by the runner
+        event="$GITHUB_EVENT_NAME"
+
+        # issue_comment fires for issues too — only forward comments on PRs.
+        if [ "$event" = "issue_comment" ] && \
+           [ "$(jq -r '.issue.pull_request // "null"' "$payload")" = "null" ]; then
+          echo "issue_comment is not on a PR; nothing to forward."
+          exit 0
+        fi
+
+        # PR events carry pull_request.number; a PR comment carries issue.number;
+        # CI events (check_suite / status) carry neither — ingest resolves the PR
+        # from head_sha in that case.
+        action=$(jq -r '.action // ""' "$payload")
+        number=$(jq -r '(.pull_request.number // .issue.number // 0)' "$payload")
+        label=$(jq -r '.label.name // ""' "$payload")
+        commenter=$(jq -r '.comment.user.login // ""' "$payload")
+        head_sha=$(jq -r '(.check_suite.head_sha // .sha // "")' "$payload")
+
+        jq -n \
+          --arg event "$event" \
+          --arg action "$action" \
+          --arg repo "$GITHUB_REPOSITORY" \
+          --argjson number "$number" \
+          --arg label "$label" \
+          --arg commenter "$commenter" \
+          --arg head_sha "$head_sha" \
+          '{event_type: "pr-event", client_payload: {
+             event: $event, action: $action, repo: $repo, number: $number,
+             label: $label, commenter: $commenter, head_sha: $head_sha
+           }}' \
+        | gh api -X POST "/repos/$TRACKER_REPO/dispatches" --input -

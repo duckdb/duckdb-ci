@@ -1,0 +1,56 @@
+name: Forward issue event to community-issue-tracker
+description: >-
+  Normalize the current GitHub issue event and repository_dispatch it to
+  community-issue-tracker. All forwarding logic lives here, so changes 
+  reach every tracked repo without editing each one.
+
+inputs:
+  token:
+    description: >-
+      Dispatch token — Contents RW on the tracker repo only (the minimum
+      repository_dispatch needs). Passed in by the caller; never stored here.
+    required: true
+  tracker_repo:
+    description: The community-issue-tracker repository to dispatch to.
+    required: false
+    default: duckdblabs/community-issue-tracker
+
+runs:
+  using: composite
+  steps:
+    - name: Forward the event to community-issue-tracker
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        TRACKER_REPO: ${{ inputs.tracker_repo }}
+      run: |
+        set -euo pipefail
+        payload="$GITHUB_EVENT_PATH"          # full event JSON, written by the runner
+        event="$GITHUB_EVENT_NAME"
+
+        # issue_comment fires for PRs too — only forward comments on issues.
+        if [ "$event" = "issue_comment" ] && \
+           [ "$(jq -r '.issue.pull_request // "null"' "$payload")" != "null" ]; then
+          echo "issue_comment is on a PR, not an issue; nothing to forward."
+          exit 0
+        fi
+
+        # Only coordinates + low-risk comment fields — never issue title/body. The
+        # tracker re-fetches the issue with its own token.
+        action=$(jq -r '.action // ""' "$payload")
+        number=$(jq -r '(.issue.number // 0)' "$payload")
+        commenter=$(jq -r '.comment.user.login // ""' "$payload")
+        comment_url=$(jq -r '.comment.html_url // ""' "$payload")
+
+        jq -n \
+          --arg event "$event" \
+          --arg action "$action" \
+          --arg repo "$GITHUB_REPOSITORY" \
+          --argjson number "$number" \
+          --arg commenter "$commenter" \
+          --arg comment_url "$comment_url" \
+          '{event_type: "issue-event", client_payload: {
+             event: $event, action: $action, repo: $repo, number: $number,
+             commenter: $commenter, comment_url: $comment_url
+           }}' \
+        | gh api -X POST "/repos/$TRACKER_REPO/dispatches" --input -
