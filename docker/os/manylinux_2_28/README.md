@@ -1,0 +1,33 @@
+# manylinux_2_28 images
+
+This directory defines split DuckDB build images for two architectures:
+
+- `duckdb-ci/manylinux_2_28_aarch64_cpp`
+- `duckdb-ci/manylinux_2_28_aarch64_test`
+- `duckdb-ci/manylinux_2_28_aarch64_main`
+- `duckdb-ci/manylinux_2_28_aarch64_rust`
+- `duckdb-ci/manylinux_2_28_aarch64_cuda12`
+- `duckdb-ci/manylinux_2_28_aarch64_cuda13`
+- `duckdb-ci/manylinux_2_28_amd64_cpp`
+- `duckdb-ci/manylinux_2_28_amd64_test`
+- `duckdb-ci/manylinux_2_28_amd64_main`
+- `duckdb-ci/manylinux_2_28_amd64_rust`
+- `duckdb-ci/manylinux_2_28_amd64_cuda12`
+- `duckdb-ci/manylinux_2_28_amd64_cuda13`
+
+For each architecture, `cpp` and `test` use the distro base image directly,
+`main`, `cuda12` and `cuda13` inherit from `cpp`, and `rust` inherits from `main`.
+
+## Build locally
+
+```bash
+./docker/os/manylinux_2_28/build.sh
+```
+
+The script always builds both `aarch64` and `amd64` image sets.
+
+Image tags are generated automatically as `:YYYYMMDD-<gitsha>`.
+
+## Notes
+
+- vcpkg setup stays in CI (`lukka/run-vcpkg`), not in these images.

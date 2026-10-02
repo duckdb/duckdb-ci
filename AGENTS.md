@@ -12,8 +12,8 @@
   linux distribution. Without the suffix, the package name is used for both
   distributions.
 
-## Packages are tracked in `docker/*_packages.txt` files
-- `docker/*_packages.txt` files are used when building docker images.
-- Verify that `docker/packages.py` can query a version when adding a new
+## Packages are tracked in `docker/os/*_packages.txt` files
+- `docker/os/*_packages.txt` files are used when building docker images.
+- Verify that `docker/os/packages.py` can query a version when adding a new
   explicit version check for a package.
 - Never add version checks in the docker files. Only perform version checks in packages.py.
