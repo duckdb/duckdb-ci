@@ -21,9 +21,18 @@ fi
 REPO_PREFIX="${REPO_PREFIX:-duckdb-ci}"
 IMAGE_SUFFIX="${IMAGE_SUFFIX:-}"
 PLATFORMS="${PLATFORMS:-}"
+ARCH="${ARCH:-}"
 PUSH="${PUSH:-}"
 IMAGE_SOURCE="${IMAGE_SOURCE:-}"
 REPO="${REPO_PREFIX}/service/${SERVICE}${IMAGE_SUFFIX}"
+
+if [[ -n "${ARCH}" ]]; then
+	if [[ -n "${PLATFORMS}" ]]; then
+		echo "Set ARCH or PLATFORMS, not both" >&2
+		exit 1
+	fi
+	PLATFORMS="linux/${ARCH}"
+fi
 
 if [[ $# -eq 2 ]]; then
 	VERSIONS=("$2")
@@ -48,16 +57,33 @@ REVISION="$(git -C "${SERVICE_DIR}" rev-parse HEAD 2>/dev/null || true)"
 
 build_version() {
 	local version="$1"
+	local refs=("${REPO}:${version}-${IMAGE_VERSION}" "${REPO}:${version}")
+	local cache
 	local args=(
 		"${OUTPUT}"
-		# An attestation is one more manifest in the index, with platform unknown/unknown.
+		# An attestation makes the pushed tag an index, with one more manifest of platform unknown/unknown.
 		--provenance=false
 		-f "${SERVICE_DIR}/Dockerfile"
-		-t "${REPO}:${version}-${IMAGE_VERSION}"
-		-t "${REPO}:${version}"
 		--build-arg "UPSTREAM_VERSION=${version}"
 		--label "org.opencontainers.image.version=${version}-${IMAGE_VERSION}"
 	)
+	if [[ -n "${ARCH}" ]]; then
+		# merge.sh makes the two real tags; the moving tag must not point at one platform.
+		refs=("${REPO}:${version}-${IMAGE_VERSION}-${ARCH}")
+		cache="${REPO}:buildcache-${ARCH}"
+		args+=(--cache-from "type=registry,ref=${cache}")
+		if [[ -n "${IMAGE_SUFFIX}" ]]; then
+			args+=(--cache-from "type=registry,ref=${REPO_PREFIX}/service/${SERVICE}:buildcache-${ARCH}")
+		fi
+		if [[ -n "${PUSH}" ]]; then
+			# mode=max also holds the layers of the stages that are not in the image.
+			args+=(--cache-to "type=registry,ref=${cache},mode=max")
+		fi
+	fi
+	local ref
+	for ref in "${refs[@]}"; do
+		args+=(-t "${ref}")
+	done
 	if [[ -n "${PLATFORMS}" ]]; then
 		args+=(--platform "${PLATFORMS}")
 	fi
@@ -70,8 +96,7 @@ build_version() {
 
 	# stdout carries only the refs, for a caller to read.
 	(set -x; docker buildx build "${args[@]}" "${SERVICE_DIR}" >&2)
-	echo "${REPO}:${version}-${IMAGE_VERSION}"
-	echo "${REPO}:${version}"
+	printf '%s\n' "${refs[@]}"
 }
 
 main() {
