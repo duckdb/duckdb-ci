@@ -16,6 +16,7 @@ command and environment as upstream.
 
 ```
 docker/service/build.sh           builds any service
+docker/service/merge.sh           joins the images of the architectures under the two tags
 docker/service/<name>/Dockerfile
 docker/service/<name>/versions    upstream versions to publish, one per line
 docker/service/<name>/smoke.sh    starts the image and waits until it answers
@@ -50,15 +51,45 @@ IMAGE_VERSION=local ./docker/service/build.sh azurite 3.37.0
 | `REPO_PREFIX` | `duckdb-ci` | |
 | `IMAGE_SUFFIX` | empty | `_dev` for images not built from `main` |
 | `PLATFORMS` | host platform | for example `linux/amd64,linux/arm64` |
+| `ARCH` | empty | `amd64` or `arm64`: build that one platform as a part for `merge.sh` |
 | `PUSH` | empty | set to `1` to push instead of loading into the local docker |
 | `IMAGE_SOURCE` | `https://github.com/duckdb/duckdb-ci` | repository that ghcr links the package to |
 
-A build of more than one platform must push, and needs a builder that can hold
-more than one platform:
+## Publish
+
+Each architecture is built on a machine of that architecture, and `merge.sh`
+joins the results. With `ARCH` set, `build.sh` builds `linux/<ARCH>` and sets
+one tag, `<upstream>-<IMAGE_VERSION>-<ARCH>`. It does not set the moving tag.
 
 ```bash
 docker buildx create --use
 docker login ghcr.io
+export IMAGE_VERSION=20260101-0123abcd REPO_PREFIX=ghcr.io/<owner>/duckdb-ci IMAGE_SUFFIX=_dev
+
+# On an amd64 machine, and the same with ARCH=arm64 on an arm64 machine.
+ARCH=amd64 ./docker/service/build.sh rustfs
+./docker/service/rustfs/smoke.sh "${REPO_PREFIX}/service/rustfs_dev:1.0.0-${IMAGE_VERSION}-amd64"
+ARCH=amd64 PUSH=1 ./docker/service/build.sh rustfs
+
+# On any machine, when both are pushed.
+./docker/service/merge.sh rustfs
+```
+
+`merge.sh` takes the same arguments as `build.sh` and reads `IMAGE_VERSION`,
+`REPO_PREFIX` and `IMAGE_SUFFIX`. It makes `<upstream>-<IMAGE_VERSION>` and
+`<upstream>` from the tags of the architectures, fails when a platform is
+missing, and prints the two refs.
+
+A build with `ARCH` reads the layer cache in the tag `buildcache-<ARCH>` of the
+same package, and writes it when it pushes. A `_dev` build also reads the cache
+of the package without the suffix. The cache holds the layers of all stages, so
+a change to a late layer does not run an expensive early stage again. The
+builder must be a `docker buildx create` one: the default docker driver cannot
+write this cache.
+
+An image with no `RUN` step can also be built for both platforms in one step:
+
+```bash
 IMAGE_VERSION=local REPO_PREFIX=ghcr.io/<owner>/duckdb-ci PLATFORMS=linux/amd64,linux/arm64 PUSH=1 \
 	./docker/service/build.sh rustfs
 docker buildx imagetools inspect ghcr.io/<owner>/duckdb-ci/service/rustfs:1.0.0
@@ -67,14 +98,22 @@ docker buildx imagetools inspect ghcr.io/<owner>/duckdb-ci/service/rustfs:1.0.0
 ## CI
 
 `.github/workflows/service-images.yml` builds the services whose directory
-changed, or all of them when `build.sh` or the workflow changed. It runs
-`smoke.sh` on the host-platform image and pushes the multi-arch image only when
-that passes. Run it by hand (`workflow_dispatch`) to build one service or all.
+changed, or all of them when a script in `docker/service/` or the workflow
+changed. Run it by hand (`workflow_dispatch`) to build one service or all.
+
+- `build` runs per service and architecture, on a runner of that architecture:
+  `build.sh` with `ARCH`, then `smoke.sh`, then the push of the tag of that
+  architecture.
+- `merge` runs per service: `merge.sh`. Only this job moves the tag
+  `<upstream>`, so a build that fails on one architecture leaves it as it was.
+
+A pull request from another repository, or from dependabot, cannot push: `build`
+stops after the smoke test and `merge` does not run.
 
 Dev images of services are not pruned yet. `prune-dev-images.yml` keeps only the
 newest version of a package, and a multi-arch image is several versions (the
-index and one untagged manifest per platform), so it would delete parts of a
-live image.
+index, one manifest per platform, and the tags of the architectures and of the
+cache), so it would delete parts of a live image.
 
 ## Bump a version
 
