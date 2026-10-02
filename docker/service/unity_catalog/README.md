@@ -14,7 +14,7 @@ source at the git tag `v<upstream>`, and set up for tests:
 | `duck.plain` | `EXTERNAL` | plain Delta log, at a location that the client gives; UC only registers it |
 
 The table type (who owns the storage) and catalog-managed commits are two
-separate properties, but the `uc` CLI of UC 0.5 has only these two
+separate properties, but the `uc` CLI of UC 0.5 and 0.6 has only these two
 combinations: a `MANAGED` create always commits through the catalog, and an
 `EXTERNAL` create always writes a plain log. The CLI writes the Delta log with
 Delta Kernel, so both are real Delta tables.
@@ -95,7 +95,7 @@ With the endpoint set, the entrypoint writes a `core-site.xml` into a conf dir
 that is on the classpath of the CLI and of the server.
 
 - `EXTERNAL` tables at `s3://` need only these variables.
-  `patches/0.5.1/0001-deltakernel-ambient-s3-creds.patch` makes this possible:
+  The patch `0001-deltakernel-ambient-s3-creds.patch` in `patches/<version>/` makes this possible:
   without it the CLI stops with a null pointer when UC vends no credentials.
 - `MANAGED` tables at `s3://` also need credential vending in
   `server.properties` (`s3.bucketPath.0`, region, keys and a non-empty
