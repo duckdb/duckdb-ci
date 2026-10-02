@@ -36,6 +36,7 @@ jobs:
           files_yaml: |
             docker:
             - docker/**
+            - '!docker/service/**'
 
       - name: Config
         id: config
