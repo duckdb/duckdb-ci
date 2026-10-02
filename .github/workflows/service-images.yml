@@ -33,6 +33,7 @@ jobs:
       image_version: ${{ steps.config.outputs.image_version }}
       image_suffix: ${{ steps.config.outputs.image_suffix }}
       services: ${{ steps.config.outputs.services }}
+      can_push: ${{ steps.config.outputs.can_push }}
 
     steps:
       - name: Checkout repository
@@ -46,6 +47,8 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           SERVICE_INPUT: ${{ inputs.service }}
           PUSH_BEFORE: ${{ github.event.before }}
+          # The token of a pull request from another repository, or from dependabot, cannot write packages.
+          CAN_PUSH: ${{ github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]') }}
         run: |
           set -euo pipefail
 
@@ -79,7 +82,7 @@ jobs:
               base="${PUSH_BEFORE}"
             fi
             if changed="$(git diff --name-only "${base}" HEAD)"; then
-              if grep -qxE 'docker/service/build\.sh|\.github/workflows/service-images\.yml' <<<"${changed}"; then
+              if grep -qxE 'docker/service/[^/]+\.sh|\.github/workflows/service-images\.yml' <<<"${changed}"; then
                 selected=("${all[@]}")
               else
                 for service in "${all[@]}"; do
@@ -100,14 +103,78 @@ jobs:
             echo image_version="${image_version}"
             echo image_suffix="${image_suffix}"
             echo services="${services}"
+            echo can_push="${CAN_PUSH}"
           } >> "$GITHUB_OUTPUT"
 
   build:
-    name: Build (${{ matrix.service }})
-    runs-on: ubuntu-latest
+    name: Build (${{ matrix.service }}, ${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
     needs:
       - prepare
     if: ${{ needs.prepare.outputs.services != '[]' }}
+    # A first build of a service that compiles its upstream has no layer cache.
+    timeout-minutes: 150
+    strategy:
+      fail-fast: false
+      matrix:
+        service: ${{ fromJSON(needs.prepare.outputs.services) }}
+        arch:
+          - amd64
+          - arm64
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+
+    env:
+      SERVICE: ${{ matrix.service }}
+      ARCH: ${{ matrix.arch }}
+      IMAGE_VERSION: ${{ needs.prepare.outputs.image_version }}
+      IMAGE_SUFFIX: ${{ needs.prepare.outputs.image_suffix }}
+      REPO_PREFIX: ghcr.io/${{ github.repository_owner }}/duckdb-ci
+      IMAGE_SOURCE: ${{ github.server_url }}/${{ github.repository }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      # The default docker driver cannot write a registry cache.
+      - name: Create buildx builder
+        run: docker buildx create --use
+
+      - name: Login to GHCR
+        if: ${{ needs.prepare.outputs.can_push == 'true' }}
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and smoke test
+        run: |
+          set -euo pipefail
+          ./docker/service/build.sh "${SERVICE}" | tee "${RUNNER_TEMP}/built.txt"
+          while read -r ref; do
+            "./docker/service/${SERVICE}/smoke.sh" "${ref}"
+          done < "${RUNNER_TEMP}/built.txt"
+
+      # The builder still holds every layer of the build above; this run only pushes.
+      - name: Push
+        if: ${{ needs.prepare.outputs.can_push == 'true' }}
+        env:
+          PUSH: '1'
+        run: ./docker/service/build.sh "${SERVICE}"
+
+  merge:
+    name: Merge (${{ matrix.service }})
+    runs-on: ubuntu-latest
+    needs:
+      - prepare
+      - build
+    # Not success(): a service whose builds passed is published also when another service failed.
+    # merge.sh fails for a service that lacks the image of one architecture.
+    if: ${{ !cancelled() && needs.prepare.outputs.can_push == 'true' && needs.prepare.outputs.services != '[]' }}
     strategy:
       fail-fast: false
       matrix:
@@ -118,53 +185,24 @@ jobs:
       IMAGE_VERSION: ${{ needs.prepare.outputs.image_version }}
       IMAGE_SUFFIX: ${{ needs.prepare.outputs.image_suffix }}
       REPO_PREFIX: ghcr.io/${{ github.repository_owner }}/duckdb-ci
-      IMAGE_SOURCE: ${{ github.server_url }}/${{ github.repository }}
-      # The token of a pull request from another repository, or from dependabot, cannot write packages.
-      CAN_PUSH: ${{ github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]') }}
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
 
-      # The default docker driver cannot build a multi-platform image.
-      - name: Create buildx builder
-        run: docker buildx create --use
-
-      - name: Build and smoke test
-        run: |
-          set -euo pipefail
-          ./docker/service/build.sh "${SERVICE}" | tee "${RUNNER_TEMP}/built.txt"
-          # Both tags of a version name one image; test it once.
-          grep -- "-${IMAGE_VERSION}\$" "${RUNNER_TEMP}/built.txt" | while read -r ref; do
-            "./docker/service/${SERVICE}/smoke.sh" "${ref}"
-          done
-
       - name: Login to GHCR
-        if: ${{ env.CAN_PUSH == 'true' }}
         uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push multi-platform image
-        if: ${{ env.CAN_PUSH == 'true' }}
-        env:
-          PLATFORMS: linux/amd64,linux/arm64
-          PUSH: '1'
+      - name: Merge the architectures
         run: |
           set -euo pipefail
-          ./docker/service/build.sh "${SERVICE}" | tee "${RUNNER_TEMP}/pushed.txt"
-
-          while read -r ref; do
-            docker buildx imagetools inspect --format '{{json .Manifest}}' "${ref}" \
-              | jq -e --arg want "${PLATFORMS}" \
-                '[.manifests[]?.platform | "\(.os)/\(.architecture)"] as $have | ($want / ",") - $have == []' >/dev/null \
-              || { echo "::error::${ref} does not hold all of ${PLATFORMS}"; exit 1; }
-          done < "${RUNNER_TEMP}/pushed.txt"
-
+          ./docker/service/merge.sh "${SERVICE}" | tee "${RUNNER_TEMP}/merged.txt"
           {
-            echo "### Pushed ${SERVICE} (${PLATFORMS})"
+            echo "### Pushed ${SERVICE} (linux/amd64, linux/arm64)"
             echo
-            sed -e 's/^/- `/' -e 's/$/`/' "${RUNNER_TEMP}/pushed.txt"
+            sed -e 's/^/- `/' -e 's/$/`/' "${RUNNER_TEMP}/merged.txt"
           } >> "$GITHUB_STEP_SUMMARY"
