@@ -1,0 +1,77 @@
+#!/usr/bin/env bash
+# Table management for the catalog `duck`, through the `uc` CLI of the image.
+set -euo pipefail
+
+UC=/home/unitycatalog/bin/uc
+DATA_DIR="${DUCKTEST_UC_DATA_DIR:-/home/unitycatalog/etc/data}"
+
+usage() {
+	cat <<'USAGE'
+Usage:
+  uctl create <schema> <table> "<col TYPE, col TYPE, ...>"
+  uctl drop   <schema> <table>
+  uctl get    <schema> <table>
+  uctl list   <schema>
+  uctl uc     <uc args...>
+
+<schema> is cmt or plain.
+  cmt    MANAGED table. The CLI always commits it through the catalog, so it has
+         the catalogManaged feature.
+  plain  EXTERNAL table at <data dir>/duck/plain/<table>: a plain Delta log,
+         which UC only registers.
+USAGE
+}
+
+if [[ $# -lt 1 ]]; then
+	usage >&2
+	exit 2
+fi
+cmd="$1"
+shift
+
+case "${cmd}" in
+create)
+	schema="${1:?schema (cmt|plain)}"
+	table="${2:?table name}"
+	cols="${3:?columns}"
+	case "${schema}" in
+	cmt)
+		"${UC}" table create --full_name "duck.cmt.${table}" --columns "${cols}" \
+			--table_type MANAGED
+		;;
+	plain)
+		"${UC}" table create --full_name "duck.plain.${table}" --columns "${cols}" \
+			--table_type EXTERNAL --storage_location "${DATA_DIR}/duck/plain/${table}"
+		;;
+	*)
+		echo "unknown schema '${schema}' (use cmt|plain)" >&2
+		exit 2
+		;;
+	esac
+	;;
+drop)
+	schema="${1:?schema}"
+	table="${2:?table name}"
+	"${UC}" table delete --full_name "duck.${schema}.${table}"
+	;;
+get)
+	schema="${1:?schema}"
+	table="${2:?table name}"
+	"${UC}" table get --full_name "duck.${schema}.${table}"
+	;;
+list)
+	schema="${1:?schema}"
+	"${UC}" table list --catalog duck --schema "${schema}"
+	;;
+uc)
+	"${UC}" "$@"
+	;;
+-h | --help | help)
+	usage
+	;;
+*)
+	echo "unknown command: ${cmd}" >&2
+	usage >&2
+	exit 2
+	;;
+esac
