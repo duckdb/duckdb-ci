@@ -8,9 +8,10 @@ third-party registries.
 
 - `duckdb-ci/service/rustfs`: [RustFS](https://github.com/rustfs/rustfs), from `rustfs/rustfs`
 - `duckdb-ci/service/azurite`: [Azurite](https://github.com/Azure/Azurite), from `mcr.microsoft.com/azure-storage/azurite`
+- `duckdb-ci/service/unity_catalog`: [Unity Catalog](https://github.com/unitycatalog/unitycatalog), built from source; see [`unity_catalog/README.md`](unity_catalog/README.md)
 
-Each image is its upstream image with labels added. It starts with the same
-command and environment as upstream.
+The RustFS and Azurite images are the upstream image with labels added. They
+start with the same command and environment as upstream.
 
 ## Layout
 
@@ -20,6 +21,7 @@ docker/service/merge.sh           joins the images of the architectures under th
 docker/service/<name>/Dockerfile
 docker/service/<name>/versions    upstream versions to publish, one per line
 docker/service/<name>/smoke.sh    starts the image and waits until it answers
+docker/service/<name>/...         other files that the Dockerfile copies
 ```
 
 ## Names and tags
@@ -123,11 +125,19 @@ when it needs no more builds. Tags that are published stay.
 ## Add a service
 
 1. Add `docker/service/<name>/Dockerfile`. It takes `ARG UPSTREAM_VERSION` and
-   sets the `org.opencontainers.image.source` label.
+   sets the `org.opencontainers.image.source` label. The build context is the
+   directory of the service, so the Dockerfile can copy config, scripts and
+   patches from it. It must build with no input but the context and
+   `UPSTREAM_VERSION`: an image that is built from source gets the source in a
+   build stage.
 2. Add `docker/service/<name>/versions`.
 3. Add an executable `docker/service/<name>/smoke.sh <image-ref>` that starts a
    container from the ref, exits 0 when the service answers and 1 when it does
    not, and removes the container.
+
+Put the steps that take long in early stages or layers and the files of the
+service in late ones, so that the layer cache covers the long steps. A service
+with more than the upstream image has a `README.md` in its directory.
 
 CI finds the service by its directory. After the first publish, make the new
 package public in the ghcr package settings.
