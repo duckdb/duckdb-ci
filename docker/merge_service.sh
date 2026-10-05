@@ -8,7 +8,8 @@ fi
 
 SERVICE="$1"
 SERVICE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/${SERVICE}"
-if [[ ! -f "${SERVICE_DIR}/Dockerfile" ]]; then
+# A service is a directory with a versions file; the toolchain families have none.
+if [[ ! -f "${SERVICE_DIR}/versions" ]]; then
 	echo "Unknown service: ${SERVICE}" >&2
 	exit 1
 fi
@@ -20,7 +21,7 @@ fi
 
 REPO_PREFIX="${REPO_PREFIX:-duckdb-ci}"
 IMAGE_SUFFIX="${IMAGE_SUFFIX:-}"
-REPO="${REPO_PREFIX}/service/${SERVICE}${IMAGE_SUFFIX}"
+REPO="${REPO_PREFIX}/${SERVICE}${IMAGE_SUFFIX}"
 read -r -a ARCHES <<<"${ARCHES:-amd64 arm64}"
 
 if [[ $# -eq 2 ]]; then

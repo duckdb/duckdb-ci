@@ -8,7 +8,8 @@ fi
 
 SERVICE="$1"
 SERVICE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/${SERVICE}"
-if [[ ! -f "${SERVICE_DIR}/Dockerfile" ]]; then
+# A service is a directory with a versions file; the toolchain families have none.
+if [[ ! -f "${SERVICE_DIR}/versions" ]]; then
 	echo "Unknown service: ${SERVICE}" >&2
 	exit 1
 fi
@@ -24,7 +25,7 @@ PLATFORMS="${PLATFORMS:-}"
 ARCH="${ARCH:-}"
 PUSH="${PUSH:-}"
 IMAGE_SOURCE="${IMAGE_SOURCE:-}"
-REPO="${REPO_PREFIX}/service/${SERVICE}${IMAGE_SUFFIX}"
+REPO="${REPO_PREFIX}/${SERVICE}${IMAGE_SUFFIX}"
 
 if [[ -n "${ARCH}" ]]; then
 	if [[ -n "${PLATFORMS}" ]]; then
@@ -73,7 +74,7 @@ build_version() {
 		cache="${REPO}:buildcache-${ARCH}"
 		args+=(--cache-from "type=registry,ref=${cache}")
 		if [[ -n "${IMAGE_SUFFIX}" ]]; then
-			args+=(--cache-from "type=registry,ref=${REPO_PREFIX}/service/${SERVICE}:buildcache-${ARCH}")
+			args+=(--cache-from "type=registry,ref=${REPO_PREFIX}/${SERVICE}:buildcache-${ARCH}")
 		fi
 		if [[ -n "${PUSH}" ]]; then
 			# mode=max also holds the layers of the stages that are not in the image.

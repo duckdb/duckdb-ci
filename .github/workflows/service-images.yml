@@ -4,13 +4,13 @@ name: Service images
 on:
   pull_request:
     paths:
-      - docker/service/**
+      - docker/**
       - .github/workflows/service-images.yml
   push:
     branches:
       - main
     paths:
-      - docker/service/**
+      - docker/**
       - .github/workflows/service-images.yml
   workflow_dispatch:
     inputs:
@@ -59,10 +59,8 @@ jobs:
           fi
 
           all=()
-          for dir in docker/service/*/; do
-            if [[ -f "${dir}Dockerfile" ]]; then
-              all+=("$(basename "${dir}")")
-            fi
+          for versions in docker/*/versions; do
+            all+=("$(basename "$(dirname "${versions}")")")
           done
 
           selected=()
@@ -82,11 +80,11 @@ jobs:
               base="${PUSH_BEFORE}"
             fi
             if changed="$(git diff --name-only "${base}" HEAD)"; then
-              if grep -qxE 'docker/service/[^/]+\.sh|\.github/workflows/service-images\.yml' <<<"${changed}"; then
+              if grep -qxE 'docker/(build|merge)_service\.sh|\.github/workflows/service-images\.yml' <<<"${changed}"; then
                 selected=("${all[@]}")
               else
                 for service in "${all[@]}"; do
-                  if grep -q "^docker/service/${service}/" <<<"${changed}"; then
+                  if grep -q "^docker/${service}/" <<<"${changed}"; then
                     selected+=("${service}")
                   fi
                 done
@@ -154,9 +152,9 @@ jobs:
       - name: Build and smoke test
         run: |
           set -euo pipefail
-          ./docker/service/build.sh "${SERVICE}" | tee "${RUNNER_TEMP}/built.txt"
+          ./docker/build_service.sh "${SERVICE}" | tee "${RUNNER_TEMP}/built.txt"
           while read -r ref; do
-            "./docker/service/${SERVICE}/smoke.sh" "${ref}"
+            "./docker/${SERVICE}/smoke.sh" "${ref}"
           done < "${RUNNER_TEMP}/built.txt"
 
       # The builder still holds every layer of the build above; this run only pushes.
@@ -164,7 +162,7 @@ jobs:
         if: ${{ needs.prepare.outputs.can_push == 'true' }}
         env:
           PUSH: '1'
-        run: ./docker/service/build.sh "${SERVICE}"
+        run: ./docker/build_service.sh "${SERVICE}"
 
   merge:
     name: Merge (${{ matrix.service }})
@@ -200,7 +198,7 @@ jobs:
       - name: Merge the architectures
         run: |
           set -euo pipefail
-          ./docker/service/merge.sh "${SERVICE}" | tee "${RUNNER_TEMP}/merged.txt"
+          ./docker/merge_service.sh "${SERVICE}" | tee "${RUNNER_TEMP}/merged.txt"
           {
             echo "### Pushed ${SERVICE} (linux/amd64, linux/arm64)"
             echo

@@ -28,7 +28,7 @@ docker run --rm -d --name ducktest-uc \
 	-p 8080:8080 \
 	-v "${dir}:${dir}" \
 	-e "DUCKTEST_UC_DATA_DIR=${dir}" \
-	ghcr.io/duckdb/duckdb-ci/service/unity_catalog:0.5.1
+	ghcr.io/duckdb/duckdb-ci/unity_catalog:0.5.1
 ```
 
 - `-v "${dir}:${dir}"` with `DUCKTEST_UC_DATA_DIR=${dir}`: UC records an
@@ -105,7 +105,7 @@ that is on the classpath of the CLI and of the server.
 
 ## Build
 
-`../build.sh` builds the image like any other service. The Dockerfile clones
+`../build_service.sh` builds the image like any other service. The Dockerfile clones
 the UC source at `v<upstream>`, applies `patches/<upstream>/*.patch`, and runs
 the sbt build of UC; a patch that does not apply stops the build. The commit of
 the source is in `/home/unitycatalog/UC_REVISION`.
