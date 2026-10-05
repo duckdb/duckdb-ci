@@ -10,8 +10,8 @@ images:
 	IMAGE_VERSION="$(IMAGE_VERSION)" ./docker/ubuntu_24_04/build.sh amd64
 
 service-images:
-	set -e; for dir in docker/service/*/; do \
-		IMAGE_VERSION="$(IMAGE_VERSION)" ./docker/service/build.sh "$$(basename "$$dir")"; \
+	set -e; for versions in docker/*/versions; do \
+		IMAGE_VERSION="$(IMAGE_VERSION)" ./docker/build_service.sh "$$(basename "$$(dirname "$$versions")")"; \
 	done
 
 prune:

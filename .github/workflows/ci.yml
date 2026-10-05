@@ -36,7 +36,11 @@ jobs:
           files_yaml: |
             docker:
             - docker/**
-            - '!docker/service/**'
+            # Service images have their own workflow. List each new service here.
+            - '!docker/azurite/**'
+            - '!docker/rustfs/**'
+            - '!docker/build_service.sh'
+            - '!docker/merge_service.sh'
 
       - name: Config
         id: config
