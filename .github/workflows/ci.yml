@@ -591,7 +591,7 @@ jobs:
           groups: |
             external:
               config: .github/config/external_extensions.cmake
-              default_exclude_archs: wasm_mvp;wasm_eh;wasm_threads;windows_amd64_mingw;windows_amd64;linux_amd64_musl
+              default_exclude_archs: wasm_base;wasm_threads;windows_amd64_mingw;windows_amd64;linux_amd64_musl
               toolchain: main
             main:
               config:
@@ -601,7 +601,7 @@ jobs:
               toolchain: main
             rust:
               config: .github/config/rust_based_extensions.cmake
-              default_exclude_archs: wasm_mvp;wasm_eh;wasm_threads;windows_amd64_rtools;windows_amd64_mingw;linux_amd64_musl
+              default_exclude_archs: wasm_base;wasm_threads;windows_amd64_rtools;windows_amd64_mingw;linux_amd64_musl
               toolchain: rust
 
       - name: Validate matrix outputs

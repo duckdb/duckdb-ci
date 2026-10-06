@@ -445,7 +445,7 @@ def runner_alias(duckdb_arch: str) -> str | None:
         return "windows_x64"
     if duckdb_arch == "windows_arm64":
         return "windows_arm64"
-    if duckdb_arch in {"wasm_mvp", "wasm_eh", "wasm_threads"}:
+    if duckdb_arch in {"wasm_base", "wasm_threads"}:
         return "linux_x64"
     return None
 
