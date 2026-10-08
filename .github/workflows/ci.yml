@@ -591,6 +591,7 @@ jobs:
           runners: ${{ steps.detect.outputs.runners }}
           reduced_ci_mode: disabled
           image_version: ${{ needs.prepare.outputs.image_version }}
+          windows_vcpkg_toolchain: clang-cl
           groups: |
             external:
               config: .github/config/external_extensions.cmake
@@ -629,6 +630,15 @@ jobs:
               jq -e '.include | type == "array"' <<<"$output" >/dev/null
             fi
           done
+          jq -e '
+            all(.include[];
+              if .duckdb_arch == "windows_amd64" or .duckdb_arch == "windows_arm64"
+              then (.vcpkg_target_triplet | endswith("-clangcl")) and
+                   (.vcpkg_host_triplet | endswith("-clangcl"))
+              else true
+              end
+            )
+          ' <<<"$BUILD_WINDOWS" >/dev/null
 
   test-checkout:
     name: Test checkout (${{ matrix.runner_provider }}, ${{ matrix.runs_on }})
@@ -878,7 +888,7 @@ jobs:
       - test-image-compat
       - test-image-lint
       - test-compat
-    runs-on: ubuntu-slim
+    runs-on: namespace-profile-linux-slim
     steps:
       - name: Check CI status
         run: |
