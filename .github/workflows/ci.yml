@@ -888,7 +888,7 @@ jobs:
       - test-image-compat
       - test-image-lint
       - test-compat
-    runs-on: ubuntu-slim
+    runs-on: namespace-profile-linux-slim
     steps:
       - name: Check CI status
         run: |
