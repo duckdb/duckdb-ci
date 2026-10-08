@@ -2,6 +2,9 @@ name: "Detect Runners"
 description: "Detect runner provider and standard runner labels"
 
 outputs:
+  runner_linux_slim:
+    description: "Runner label for slim Linux jobs"
+    value: ${{ steps.config.outputs.runner_linux_slim }}
   runner_linux_small:
     description: "Runner label for small Linux jobs"
     value: ${{ steps.config.outputs.runner_linux_small }}
@@ -45,6 +48,7 @@ runs:
         # Fall back to GitHub-native runners for forks.
         if [[ "${{ github.repository_owner }}" == "duckdb" ]]; then
           runner_provider=namespace
+          runner_linux_slim=namespace-profile-linux-slim
           runner_linux_small=namespace-profile-linux-small
           runner_linux_x64=namespace-profile-linux-x64
           runner_linux_22_x64=namespace-profile-linux-22-x64
@@ -55,6 +59,7 @@ runs:
           runner_macos_14_arm64=namespace-profile-macos-14-arm64
         else
           runner_provider=github
+          runner_linux_slim=ubuntu-slim
           runner_linux_small=ubuntu-latest
           runner_linux_x64=ubuntu-latest
           runner_linux_22_x64=ubuntu-22.04
@@ -67,6 +72,7 @@ runs:
 
         {
           echo "runner_provider=$runner_provider"
+          echo "runner_linux_slim=$runner_linux_slim"
           echo "runner_linux_small=$runner_linux_small"
           echo "runner_linux_x64=$runner_linux_x64"
           echo "runner_linux_22_x64=$runner_linux_22_x64"
@@ -81,6 +87,7 @@ runs:
           echo "runners<<EOF"
           cat <<EOF
         {
+          "linux_slim": "$runner_linux_slim",
           "linux_small": "$runner_linux_small",
           "linux_x64": "$runner_linux_x64",
           "linux_22_x64": "$runner_linux_22_x64",
