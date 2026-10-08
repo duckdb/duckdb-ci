@@ -23,6 +23,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--runners", default="{}")
     parser.add_argument("--reduced-ci-mode", default="auto")
     parser.add_argument("--image-version", default="")
+    parser.add_argument("--windows-vcpkg-toolchain", default="cl")
     parser.add_argument("--groups", required=True)
     parser.add_argument("--out", default="")
     return parser
@@ -40,6 +41,7 @@ def main(argv: list[str] | None = None) -> int:
         event_type=event_type,
         image_version=args.image_version,
         groups=args.groups,
+        windows_vcpkg_toolchain=args.windows_vcpkg_toolchain,
     )
 
     output_path = Path(args.out) if args.out else None

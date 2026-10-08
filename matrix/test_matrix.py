@@ -136,25 +136,42 @@ def test_exclude_and_opt_in_filters(tmp_path):
     assert "wasm_eh" not in matrices.build.wasm.archs
 
 
-def test_windows_jobs_use_clangcl_vcpkg_triplets():
+@pytest.mark.parametrize(
+    ("windows_vcpkg_toolchain", "suffix"),
+    (("cl", ""), ("clang-cl", "-clangcl")),
+)
+def test_windows_jobs_select_vcpkg_toolchain(windows_vcpkg_toolchain, suffix):
     matrices = compute_core_matrices(
         load_repo_config(),
         opt_in_archs="windows_arm64",
         reduced_ci_mode="disabled",
+        windows_vcpkg_toolchain=windows_vcpkg_toolchain,
     )
 
-    for arch, triplet in (
-        ("windows_amd64", "x64-windows-static-release-clangcl"),
-        ("windows_arm64", "arm64-windows-static-release-clangcl"),
+    for arch, base_triplet in (
+        ("windows_amd64", "x64-windows-static-release"),
+        ("windows_arm64", "arm64-windows-static-release"),
     ):
-        build = matrices.build.windows.get(
-            arch=arch, prefix="main-extensions"
-        )
+        triplet = f"{base_triplet}{suffix}"
+        build = matrices.build.windows.get(arch=arch, prefix="main-extensions")
         test = matrices.test.windows.get(arch=arch)
         assert build.vcpkg_target_triplet == triplet
         assert build.vcpkg_host_triplet == triplet
         assert test.vcpkg_target_triplet == triplet
         assert test.vcpkg_host_triplet == triplet
+
+    mingw = matrices.build.windows.get(
+        arch="windows_amd64_mingw", prefix="main-extensions"
+    )
+    assert mingw.vcpkg_target_triplet == "x64-mingw-static"
+    assert mingw.vcpkg_host_triplet == "x64-mingw-static"
+
+
+def test_windows_vcpkg_toolchain_rejects_unknown_value():
+    with pytest.raises(MatrixError, match="must be cl\\|clang-cl"):
+        compute_core_matrices(
+            load_repo_config(), windows_vcpkg_toolchain="clangcl"
+        )
 
 
 def test_split_list_accepts_commas_semicolons_and_deduplicates():

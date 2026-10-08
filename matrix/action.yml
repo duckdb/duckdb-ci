@@ -22,6 +22,10 @@ inputs:
     description: "Container image version tag"
     required: false
     default: ""
+  windows_vcpkg_toolchain:
+    description: "Windows compiler and matching vcpkg toolchain: cl or clang-cl"
+    required: false
+    default: "cl"
   groups:
     description: "YAML extension group configuration"
     required: true
@@ -64,6 +68,7 @@ runs:
         RUNNERS: ${{ inputs.runners }}
         REDUCED_CI_MODE: ${{ inputs.reduced_ci_mode }}
         IMAGE_VERSION: ${{ inputs.image_version }}
+        WINDOWS_VCPKG_TOOLCHAIN: ${{ inputs.windows_vcpkg_toolchain }}
         GROUPS: ${{ inputs.groups }}
       run: |
         set -euo pipefail
@@ -75,5 +80,6 @@ runs:
           --runners "${RUNNERS}" \
           --reduced-ci-mode "${REDUCED_CI_MODE}" \
           --image-version "${IMAGE_VERSION}" \
+          --windows-vcpkg-toolchain "${WINDOWS_VCPKG_TOOLCHAIN}" \
           --groups "${GROUPS}" \
           --out "$GITHUB_OUTPUT"

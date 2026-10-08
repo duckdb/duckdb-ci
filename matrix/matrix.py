@@ -20,6 +20,7 @@ PLATFORM_CONFIG_KEYS: dict[Platform, str] = {
 PULL_REQUEST = "pull_request"
 PUSH = "push"
 UNKNOWN = "unknown"
+WINDOWS_VCPKG_TOOLCHAINS = {"cl", "clang-cl"}
 
 
 @dataclass(frozen=True, slots=True)
@@ -243,6 +244,24 @@ def resolve_reduced_ci_mode(mode: str | None, event_type: str) -> bool:
     if mode == "disabled":
         return False
     return event_type == PULL_REQUEST
+
+
+def parse_windows_vcpkg_toolchain(value: str | None) -> str:
+    toolchain = (value or "").strip() or "cl"
+    if toolchain not in WINDOWS_VCPKG_TOOLCHAINS:
+        raise MatrixError(
+            f"invalid Windows vcpkg toolchain: {toolchain!r} (must be cl|clang-cl)"
+        )
+    return toolchain
+
+
+def select_vcpkg_triplet(duckdb_arch: str, triplet: str, windows_toolchain: str) -> str:
+    if duckdb_arch not in {"windows_amd64", "windows_arm64"}:
+        return triplet
+    base_triplet = triplet.removesuffix("-clangcl")
+    if windows_toolchain == "clang-cl":
+        return f"{base_triplet}-clangcl"
+    return base_triplet
 
 
 def load_extensions_config(path: Path) -> dict[str, Any]:
@@ -491,6 +510,7 @@ def build_job(
     effective_exclude_archs: str,
     effective_opt_in_archs: str,
     image_version: str,
+    windows_vcpkg_toolchain: str,
 ) -> BuildJob:
     duckdb_arch = str(entry["duckdb_arch"])
     if group.toolchain in ("cuda12", "cuda13") and (
@@ -507,8 +527,12 @@ def build_job(
             container = f"ghcr.io/duckdb/duckdb-ci/{container_name}:{image_version}"
     return BuildJob(
         runner=runner,
-        vcpkg_target_triplet=str(entry["vcpkg_target_triplet"]),
-        vcpkg_host_triplet=str(entry["vcpkg_host_triplet"]),
+        vcpkg_target_triplet=select_vcpkg_triplet(
+            duckdb_arch, str(entry["vcpkg_target_triplet"]), windows_vcpkg_toolchain
+        ),
+        vcpkg_host_triplet=select_vcpkg_triplet(
+            duckdb_arch, str(entry["vcpkg_host_triplet"]), windows_vcpkg_toolchain
+        ),
         duckdb_arch=duckdb_arch,
         group_name=group.key,
         prefix=prefix,
@@ -530,6 +554,7 @@ def test_job(
     toolchains: tuple[str, ...],
     extension_config_paths: tuple[str, ...],
     image_version: str,
+    windows_vcpkg_toolchain: str,
 ) -> TestJob:
     duckdb_arch = str(entry["duckdb_arch"])
     osx_build_arch = str(entry["osx_build_arch"]) if "osx_build_arch" in entry else None
@@ -543,8 +568,12 @@ def test_job(
         runner=runner,
         duckdb_arch=duckdb_arch,
         artifact_pattern=f"*-extensions-{duckdb_arch}",
-        vcpkg_target_triplet=str(entry["vcpkg_target_triplet"]),
-        vcpkg_host_triplet=str(entry["vcpkg_host_triplet"]),
+        vcpkg_target_triplet=select_vcpkg_triplet(
+            duckdb_arch, str(entry["vcpkg_target_triplet"]), windows_vcpkg_toolchain
+        ),
+        vcpkg_host_triplet=select_vcpkg_triplet(
+            duckdb_arch, str(entry["vcpkg_host_triplet"]), windows_vcpkg_toolchain
+        ),
         toolchains=toolchains,
         extension_config_paths=extension_config_paths,
         osx_build_arch=osx_build_arch,
@@ -563,10 +592,12 @@ def compute_matrices(
     event_type: str = UNKNOWN,
     image_version: str = "",
     groups: str | None = None,
+    windows_vcpkg_toolchain: str = "cl",
 ) -> Matrices:
     reduced_ci = resolve_reduced_ci_mode(reduced_ci_mode, event_type)
     runner_overrides = parse_runners(runners)
     extension_groups = parse_groups(groups)
+    windows_toolchain = parse_windows_vcpkg_toolchain(windows_vcpkg_toolchain)
 
     result = Matrices()
     for output_platform, config_key in PLATFORM_CONFIG_KEYS.items():
@@ -599,6 +630,7 @@ def compute_matrices(
                         effective_exclude_archs,
                         effective_opt_in_archs,
                         image_version,
+                        windows_toolchain,
                     )
                 )
                 duckdb_arch = str(entry["duckdb_arch"])
@@ -622,6 +654,7 @@ def compute_matrices(
                 tuple(sorted(toolchains)),
                 tuple(config_paths),
                 image_version,
+                windows_toolchain,
             )
             for entry, runner, toolchains, config_paths, _ in test_entries.values()
         )
