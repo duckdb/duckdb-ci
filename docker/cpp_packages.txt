@@ -15,8 +15,10 @@ perl-DateTime # manylinux
 perl-Devel-Cover # manylinux
 perl-Devel-StackTrace # manylinux
 perl-Digest-MD5 # manylinux
+perl-IPC-Cmd # manylinux
 perl-Module-Load-Conditional # manylinux
 perl-Time-HiRes # manylinux
+perl-Time-Piece # manylinux
 perl-TimeDate # manylinux
 python3 >= 3.12
 python3-venv # ubuntu:24
