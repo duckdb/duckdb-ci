@@ -21,6 +21,7 @@ PULL_REQUEST = "pull_request"
 PUSH = "push"
 UNKNOWN = "unknown"
 WINDOWS_VCPKG_TOOLCHAINS = {"cl", "clang-cl"}
+CUDA_TOOLCHAIN_VERSIONS = {"cuda12": "12", "cuda13": "13"}
 
 
 @dataclass(frozen=True, slots=True)
@@ -31,6 +32,7 @@ class ExtensionGroup:
     opt_in_archs: str | None
     config_paths: tuple[str, ...]
     extra_toolchains: str = ""
+    cuda_archs: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -50,6 +52,8 @@ class BuildJob:
     container_name: str | None = None
     container: str | None = None
     extra_toolchains: str = ""
+    cuda_version: str = ""
+    cuda_archs: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         result: dict[str, Any] = {
@@ -64,6 +68,8 @@ class BuildJob:
             "opt_in_archs": self.opt_in_archs,
             "toolchain": self.toolchain,
             "extra_toolchains": self.extra_toolchains,
+            "cuda_version": self.cuda_version,
+            "cuda_archs": self.cuda_archs,
             "extension_config_paths": list(self.extension_config_paths),
         }
         if self.osx_build_arch is not None:
@@ -377,6 +383,7 @@ def parse_groups(raw: str | None) -> tuple[ExtensionGroup, ...]:
             value = value.strip()
             if field not in {
                 "config",
+                "cuda_archs",
                 "default_exclude_archs",
                 "extra_toolchains",
                 "opt_in_archs",
@@ -423,13 +430,16 @@ def parse_groups(raw: str | None) -> tuple[ExtensionGroup, ...]:
         toolchain = config["toolchain"]
         if not isinstance(toolchain, str) or not toolchain:
             raise MatrixError(f"group {key!r} toolchain must be a non-empty string")
-        supported_toolchains = {"main", "rust", "cuda12", "cuda13"}
+        supported_toolchains = {"main", "rust", *CUDA_TOOLCHAIN_VERSIONS}
         if toolchain not in supported_toolchains:
             raise MatrixError(f"group {key!r} has unsupported toolchain: {toolchain!r}")
-        for field in ("default_exclude_archs", "extra_toolchains", "opt_in_archs"):
+        for field in ("default_exclude_archs", "extra_toolchains", "opt_in_archs", "cuda_archs"):
             value = config.get(field)
             if value is not None and not isinstance(value, str):
                 raise MatrixError(f"group {key!r} {field} must be a string")
+        cuda_archs = join_list(split_list(config.get("cuda_archs")))
+        if cuda_archs and toolchain not in CUDA_TOOLCHAIN_VERSIONS:
+            raise MatrixError(f"group {key!r} cuda_archs requires a CUDA toolchain")
         parsed.append(
             ExtensionGroup(
                 key=key,
@@ -438,6 +448,7 @@ def parse_groups(raw: str | None) -> tuple[ExtensionGroup, ...]:
                 extra_toolchains=config.get("extra_toolchains", ""),
                 opt_in_archs=config.get("opt_in_archs"),
                 config_paths=paths,
+                cuda_archs=cuda_archs,
             )
         )
     return tuple(parsed)
@@ -513,7 +524,7 @@ def build_job(
     windows_vcpkg_toolchain: str,
 ) -> BuildJob:
     duckdb_arch = str(entry["duckdb_arch"])
-    if group.toolchain in ("cuda12", "cuda13") and (
+    if group.toolchain in CUDA_TOOLCHAIN_VERSIONS and (
         not duckdb_arch.startswith("linux_") or duckdb_arch.endswith("_musl")
     ):
         raise MatrixError(f"{group.toolchain} toolchain does not support architecture {duckdb_arch!r}")
@@ -541,6 +552,8 @@ def build_job(
         opt_in_archs=effective_opt_in_archs,
         toolchain=group.toolchain,
         extra_toolchains=group.extra_toolchains,
+        cuda_version=CUDA_TOOLCHAIN_VERSIONS.get(group.toolchain, ""),
+        cuda_archs=group.cuda_archs,
         extension_config_paths=group.config_paths,
         osx_build_arch=osx_build_arch,
         container_name=container_name,
@@ -724,6 +737,8 @@ def _append_build_matrix_log(
         _append_detail(detail_lines, "exclude_archs", job.exclude_archs, indent="    ")
         _append_detail(detail_lines, "opt_in_archs", job.opt_in_archs, indent="    ")
         _append_detail(detail_lines, "container", job.container, indent="    ")
+        _append_detail(detail_lines, "cuda_version", job.cuda_version, indent="    ")
+        _append_detail(detail_lines, "cuda_archs", job.cuda_archs, indent="    ")
 
     _append_matrix_log(lines, output_key, matrix.includes, columns, append_details)
 

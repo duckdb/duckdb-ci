@@ -322,6 +322,60 @@ main:
     )
 
 
+def test_cuda_group_settings_reach_each_build_row():
+    matrices = compute_matrices(
+        {key: value if key == "linux" else {"include": []} for key, value in load_repo_config().items()},
+        groups="""older:
+  config: cuda12.cmake
+  toolchain: cuda12
+  cuda_archs: "70-real;80-real"
+newer:
+  config: cuda13.cmake
+  toolchain: cuda13
+  cuda_archs: " 90a-real, 120;90a-real "
+""",
+        reduced_ci_mode="disabled",
+    )
+    assert len(matrices.build.linux.includes) == 4
+    for arch in ("linux_amd64", "linux_arm64"):
+        for group, version, architectures in (
+            ("older", "12", "70-real;80-real"),
+            ("newer", "13", "90a-real;120"),
+        ):
+            row = matrices.build.linux.get(arch=arch, prefix=f"{group}-extensions").to_dict()
+            assert row["cuda_version"] == version
+            assert row["cuda_archs"] == architectures
+            assert row["container_name"].endswith(f"_cuda{version}")
+    for row in matrices.test.linux.to_dict()["include"]:
+        assert "cuda_version" not in row
+        assert "cuda_archs" not in row
+    log = render_readable_matrix_log(matrices)
+    assert "cuda_archs: 70-real;80-real" in log
+    assert "cuda_version: 13" in log
+
+
+@pytest.mark.parametrize(
+    "toolchain, version",
+    [("main", ""), ("rust", ""), ("cuda12", "12"), ("cuda13", "13")],
+)
+@pytest.mark.parametrize("setting", ["", '  cuda_archs: ""\n'])
+def test_cuda_architectures_default_to_empty(toolchain, version, setting):
+    matrices = compute_matrices(
+        {key: value if key == "linux" else {"include": []} for key, value in load_repo_config().items()},
+        groups=f"example:\n  config: extension.cmake\n  toolchain: {toolchain}\n{setting}",
+        reduced_ci_mode="enabled",
+    )
+    row = matrices.build.linux.get(arch="linux_amd64").to_dict()
+    assert row["cuda_version"] == version
+    assert row["cuda_archs"] == ""
+
+
+@pytest.mark.parametrize("toolchain", ["main", "rust"])
+def test_cuda_architectures_require_cuda_toolchain(toolchain):
+    with pytest.raises(MatrixError, match="cuda_archs requires a CUDA toolchain"):
+        parse_groups(f"example:\n  config: extension.cmake\n  toolchain: {toolchain}\n  cuda_archs: 80-real\n")
+
+
 def test_cuda_toolchain_rejects_unsupported_architectures():
     with pytest.raises(
         MatrixError,
