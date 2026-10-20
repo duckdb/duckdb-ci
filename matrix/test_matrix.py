@@ -35,7 +35,7 @@ main:
   toolchain: main
 rust:
   config: .github/config/rust_based_extensions.cmake
-  default_exclude_archs: wasm_mvp;wasm_eh;wasm_threads;windows_amd64_rtools;windows_amd64_mingw;linux_amd64_musl
+  default_exclude_archs: wasm_base;wasm_threads;windows_amd64_rtools;windows_amd64_mingw;linux_amd64_musl
   toolchain: rust
 """
 
@@ -94,8 +94,8 @@ def test_pull_request_auto_enables_reduced_ci(tmp_path):
         "main",
         "rust",
     ]
-    assert matrices.build.wasm.archs == ["wasm_eh"]
-    assert matrices.test.wasm.archs == ["wasm_eh"]
+    assert matrices.build.wasm.archs == ["wasm_base"]
+    assert matrices.test.wasm.archs == ["wasm_base"]
     assert matrices.build.macos.includes == []
     assert matrices.test.macos.includes == []
 
@@ -182,7 +182,7 @@ other:
 def test_exclude_and_opt_in_filters(tmp_path):
     matrices = compute_core_matrices(
         load_repo_config(),
-        exclude_archs="linux_amd64,wasm_eh",
+        exclude_archs="linux_amd64,wasm_base",
         opt_in_archs="windows_arm64;linux_amd64_musl",
         reduced_ci_mode="disabled",
     )
@@ -190,7 +190,24 @@ def test_exclude_and_opt_in_filters(tmp_path):
     assert "linux_amd64" not in matrices.build.linux.archs
     assert "linux_amd64_musl" in matrices.build.linux.archs
     assert "windows_arm64" in matrices.build.windows.archs
-    assert "wasm_eh" not in matrices.build.wasm.archs
+    assert "wasm_base" not in matrices.build.wasm.archs
+
+
+def test_exclude_wasm_eh_alias_skips_wasm_base(tmp_path):
+    matrices = compute_core_matrices(
+        load_repo_config(),
+        exclude_archs="wasm_eh",
+        reduced_ci_mode="disabled",
+    )
+    assert matrices.build.wasm.archs == ["wasm_threads"]
+    assert matrices.test.wasm.archs == ["wasm_threads"]
+
+    unaffected = compute_core_matrices(
+        load_repo_config(),
+        exclude_archs="wasm_mvp",
+        reduced_ci_mode="disabled",
+    )
+    assert "wasm_base" in unaffected.build.wasm.archs
 
 
 @pytest.mark.parametrize(
@@ -357,7 +374,7 @@ def test_cuda_builds_select_cuda_test_container_and_aggregate_toolchains():
         load_repo_config(),
         groups="""cuda13:
   config: .github/config/cuda_extensions.cmake
-  default_exclude_archs: linux_amd64_musl;linux_arm64_musl;osx_amd64;osx_arm64;windows_amd64;windows_arm64;windows_amd64_mingw;wasm_mvp;wasm_eh;wasm_threads
+  default_exclude_archs: linux_amd64_musl;linux_arm64_musl;osx_amd64;osx_arm64;windows_amd64;windows_arm64;windows_amd64_mingw;wasm_base;wasm_threads
   toolchain: cuda13
 main:
   config: .github/config/in_tree_extensions.cmake
@@ -688,7 +705,7 @@ def test_render_readable_matrix_log_includes_tables_details_and_empty_platforms(
                 ".github/config/in_tree_extensions.cmake",
                 ".github/config/out_of_tree_extensions.cmake",
             ),
-            exclude_archs="wasm_mvp;wasm_eh",
+            exclude_archs="wasm_base",
             opt_in_archs="",
         )
     )
@@ -761,7 +778,7 @@ def test_render_readable_matrix_log_includes_tables_details_and_empty_platforms(
     assert "osx_build_arch" in output
     assert "  Job 1:" in output
     assert "    extension_config_paths: .github/config/in_tree_extensions.cmake,.github/config/out_of_tree_extensions.cmake" in output
-    assert "    exclude_archs: wasm_mvp;wasm_eh" in output
+    assert "    exclude_archs: wasm_base" in output
     assert "    opt_in_archs: <empty>" in output
     assert (
         "    container: ghcr.io/duckdb/duckdb-ci/manylinux_2_28_amd64_main:20260528-fbcf3036"
