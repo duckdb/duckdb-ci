@@ -66,7 +66,7 @@ runs:
           runner_linux_arm64=ubuntu-24.04-arm
           runner_linux_arm64_small=ubuntu-24.04-arm
           runner_windows_2022_x64=windows-2022
-          runner_macos_arm64=macos-latest
+          runner_macos_arm64=macos-26
           runner_macos_14_arm64=macos-14
         fi
 
