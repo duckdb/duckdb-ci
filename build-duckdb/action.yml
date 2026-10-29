@@ -43,6 +43,9 @@ runs:
       if: ${{ inputs.vcpkg-commit != '' }}
       id: configure
       shell: bash
+      env:
+        BUILD_TYPE: ${{ inputs.build-type }}
+        CACHE_SUFFIX: ${{ inputs.cache-suffix }}
       run: |
         set -eux -o pipefail
         if [[ "${{ inputs.vcpkg-commit }}" == "default" ]]; then
@@ -51,6 +54,16 @@ runs:
         else
           resolved_vcpkg_commit="${{ inputs.vcpkg-commit }}"
         fi
+        if [[ "${DUCKDB_VERSION:-}" =~ ^v([0-9]+\.[0-9]+)\. ]]; then
+          release_line="${BASH_REMATCH[1]}"
+        else
+          release_line="unversioned"
+        fi
+        cache_key_prefix="vcpkg-v3-duckdb-${release_line}-${RUNNER_OS}-${GITHUB_JOB}-${BUILD_TYPE}"
+        if [[ -n "$CACHE_SUFFIX" ]]; then
+          cache_key_prefix="${cache_key_prefix}-${CACHE_SUFFIX}"
+        fi
+        cache_key_prefix="${cache_key_prefix}-${resolved_vcpkg_commit}-"
         cache_path="${GITHUB_WORKSPACE}/vcpkg-cache"
         mkdir -p "${cache_path}"
         echo "VCPKG_DEFAULT_BINARY_CACHE=${cache_path}" >> "$GITHUB_ENV"
@@ -69,6 +82,8 @@ runs:
           echo "vcpkg_commit=${resolved_vcpkg_commit}"
           echo "vcpkg_root=${resolved_vcpkg_root}"
           echo "do_not_update_vcpkg=${do_not_update}"
+          echo "cache_key_prefix=${cache_key_prefix}"
+          echo "cache_key=${cache_key_prefix}${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
         } >> "$GITHUB_OUTPUT"
 
 
@@ -78,10 +93,9 @@ runs:
       uses: actions/cache/restore@v5
       with:
         path: ${{ github.workspace }}/vcpkg-cache
-        # Save immutable snapshots while restoring the latest compatible prefix.
-        key: vcpkg-v2-${{ runner.os }}-${{ inputs.build-type }}-${{ inputs.cache-suffix }}-${{ steps.configure.outputs.vcpkg_commit }}-${{ github.run_id }}-${{ github.run_attempt }}
+        key: ${{ steps.configure.outputs.cache_key }}
         restore-keys: |
-          vcpkg-v2-${{ runner.os }}-${{ inputs.build-type }}-${{ inputs.cache-suffix }}-${{ steps.configure.outputs.vcpkg_commit }}-
+          ${{ steps.configure.outputs.cache_key_prefix }}
 
     - name: Setup vcpkg
       if: ${{ steps.configure.outputs.vcpkg_commit != '' }}
@@ -127,7 +141,7 @@ runs:
       run: ${{ inputs.test }}
 
     - name: Save vcpkg cache
-      if: ${{ steps.configure.outputs.vcpkg_commit != '' && inputs.cache == 'true' && inputs.save-cache == 'true' && steps.vcpkg-cache.outputs.cache-hit != 'true' }}
+      if: ${{ steps.configure.outputs.vcpkg_commit != '' && inputs.cache == 'true' && inputs.save-cache == 'true' && steps.vcpkg-cache.outputs.cache-matched-key == '' }}
       uses: actions/cache/save@v5
       with:
         path: ${{ github.workspace }}/vcpkg-cache
