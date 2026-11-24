@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from fnmatch import fnmatchcase
 from pathlib import Path
 from typing import Any
 
@@ -573,9 +574,9 @@ def test_artifact_names_match_one_deduplicated_test_row_per_arch():
         if job.duckdb_arch == "linux_arm64"
     ]
     assert [job.artifact_name for job in build_jobs] == [
-        "external-extensions-linux_arm64",
-        "main-extensions-linux_arm64",
-        "rust-extensions-linux_arm64",
+        "external-extensions-linux-arm64",
+        "main-extensions-linux-arm64",
+        "rust-extensions-linux-arm64",
     ]
     test_jobs = [
         job
@@ -584,7 +585,7 @@ def test_artifact_names_match_one_deduplicated_test_row_per_arch():
     ]
     assert test_jobs == [
         MatrixTestJob(
-            artifact_pattern="*-extensions-linux_arm64",
+            artifact_pattern="*-extensions-linux-arm64",
             container_name="manylinux_2_28_aarch64_main",
             duckdb_arch="linux_arm64",
             extension_config_paths=(
@@ -616,7 +617,7 @@ def test_prebuilt_duckdb_artifacts_are_part_of_native_build_rows():
         "osx_arm64": "duckdb-static-libs-osx-arm64.tar.gz",
         "windows_amd64": "duckdb-static-libs-windows-amd64.tar.gz",
         "windows_arm64": "duckdb-static-libs-windows-arm64.tar.gz",
-        "windows_amd64_mingw": "duckdb-static-libs-windows-mingw.tar.gz",
+        "windows_amd64_mingw": "duckdb-static-libs-windows-amd64-mingw.tar.gz",
     }
     for platform in ("linux", "macos", "windows"):
         for job in matrices.build.for_platform(platform).includes:
@@ -627,6 +628,25 @@ def test_prebuilt_duckdb_artifacts_are_part_of_native_build_rows():
             )
     for job in matrices.build.wasm.includes:
         assert job.prebuilt_duckdb_artifact == ""
+
+
+def test_platform_patterns_select_group_and_release_artifacts():
+    matrices = compute_core_matrices(load_repo_config(), reduced_ci_mode="disabled")
+    for platform in ("linux", "macos", "windows"):
+        for test in matrices.test.for_platform(platform).includes:
+            suffix = test.duckdb_arch.replace("_", "-")
+            assert fnmatchcase(
+                f"release-core-extensions-{suffix}", test.artifact_pattern
+            )
+            for build in matrices.build.for_platform(platform).includes:
+                matches = fnmatchcase(build.artifact_name, test.artifact_pattern)
+                assert matches == (build.duckdb_arch == test.duckdb_arch)
+                assert build.to_dict()["duckdb_arch"] == build.duckdb_arch
+                assert fnmatchcase(
+                    build.artifact_name, build.to_dict()["artifact_pattern"]
+                )
+    for build in matrices.build.wasm.includes:
+        assert build.artifact_name.endswith(build.duckdb_arch.replace("_", "-"))
 
 
 def test_arch_without_build_groups_has_no_test_row():
@@ -676,7 +696,7 @@ def test_render_readable_matrix_log_includes_tables_details_and_empty_platforms(
             duckdb_arch="linux_amd64",
             group_name="main",
             prefix="main-extensions",
-            artifact_name="main-extensions-linux_amd64",
+            artifact_name="main-extensions-linux-amd64",
             runner=["ubuntu-24.04"],
             vcpkg_target_triplet="x64-linux-release",
             vcpkg_host_triplet="x64-linux-release",
@@ -695,7 +715,7 @@ def test_render_readable_matrix_log_includes_tables_details_and_empty_platforms(
     matrices.test.linux.includes.append(
         MatrixTestJob(
             duckdb_arch="linux_amd64",
-            artifact_pattern="*-extensions-linux_amd64",
+            artifact_pattern="*-extensions-linux-amd64",
             runner=["ubuntu-24.04"],
             container_name="manylinux_2_28_amd64_main",
             container="ghcr.io/duckdb/duckdb-ci/manylinux_2_28_amd64_main:20260528-fbcf3036",
@@ -713,7 +733,7 @@ def test_render_readable_matrix_log_includes_tables_details_and_empty_platforms(
             duckdb_arch="osx_arm64",
             group_name="main",
             prefix="main-extensions",
-            artifact_name="main-extensions-osx_arm64",
+            artifact_name="main-extensions-osx-arm64",
             runner=["macos-15"],
             vcpkg_target_triplet="arm64-osx-release",
             vcpkg_host_triplet="arm64-osx-release",
@@ -727,7 +747,7 @@ def test_render_readable_matrix_log_includes_tables_details_and_empty_platforms(
     matrices.test.macos.includes.append(
         MatrixTestJob(
             duckdb_arch="osx_arm64",
-            artifact_pattern="*-extensions-osx_arm64",
+            artifact_pattern="*-extensions-osx-arm64",
             runner=["macos-15"],
             osx_build_arch="arm64",
             extension_config_paths=(".github/config/in_tree_extensions.cmake",),
@@ -753,8 +773,8 @@ def test_render_readable_matrix_log_includes_tables_details_and_empty_platforms(
     assert "extra_toolchains" in output
     assert "unixodbc;parser_tools" in output
     assert "main-extensions" in output
-    assert "main-extensions-linux_amd64" in output
-    assert "*-extensions-linux_amd64" in output
+    assert "main-extensions-linux-amd64" in output
+    assert "*-extensions-linux-amd64" in output
     assert "ubuntu-24.04" in output
     assert "x64-linux-release" in output
     assert "manylinux_2_28_amd64_main" in output

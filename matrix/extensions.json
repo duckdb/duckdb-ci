@@ -85,7 +85,7 @@
       },
       {
         "duckdb_arch": "windows_amd64_mingw",
-        "prebuilt_duckdb_artifact": "duckdb-static-libs-windows-mingw.tar.gz",
+        "prebuilt_duckdb_artifact": "duckdb-static-libs-windows-amd64-mingw.tar.gz",
         "runner": "windows-2025-vs2026",
         "vcpkg_target_triplet": "x64-mingw-static",
         "vcpkg_host_triplet": "x64-mingw-static",
