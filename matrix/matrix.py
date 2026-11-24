@@ -65,6 +65,7 @@ class BuildJob:
             "group_name": self.group_name,
             "artifact_prefix": self.prefix,
             "artifact_name": self.artifact_name,
+            "artifact_pattern": f"*-extensions-{self.duckdb_arch.replace('_', '-')}",
             "exclude_archs": self.exclude_archs,
             "opt_in_archs": self.opt_in_archs,
             "toolchain": self.toolchain,
@@ -549,7 +550,7 @@ def build_job(
         duckdb_arch=duckdb_arch,
         group_name=group.key,
         prefix=prefix,
-        artifact_name=f"{prefix}-{duckdb_arch}",
+        artifact_name=f"{prefix}-{duckdb_arch.replace('_', '-')}",
         exclude_archs=effective_exclude_archs,
         opt_in_archs=effective_opt_in_archs,
         toolchain=group.toolchain,
@@ -583,7 +584,7 @@ def test_job(
     return TestJob(
         runner=runner,
         duckdb_arch=duckdb_arch,
-        artifact_pattern=f"*-extensions-{duckdb_arch}",
+        artifact_pattern=f"*-extensions-{duckdb_arch.replace('_', '-')}",
         vcpkg_target_triplet=select_vcpkg_triplet(
             duckdb_arch, str(entry["vcpkg_target_triplet"]), windows_vcpkg_toolchain
         ),

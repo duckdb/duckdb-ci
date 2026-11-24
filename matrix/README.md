@@ -1,5 +1,12 @@
 # Extension build matrix
 
+Extension artifact names use hyphenated platform suffixes, such as
+`core-extensions-linux-amd64` and `core-extensions-windows-amd64-mingw`.
+Build and test rows expose the matching `artifact_pattern`, such as `*-extensions-linux-amd64`,
+so they also download release extension artifacts from earlier jobs.
+The `duckdb_arch` field and extension repository directories keep underscores.
+MinGW release archives use `windows-amd64-mingw` as well.
+
 The `groups` input associates extension configuration files with build toolchains.
 CUDA groups can optionally specify a semicolon-separated CMake architecture list:
 
