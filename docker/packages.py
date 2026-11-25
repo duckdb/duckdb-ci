@@ -56,6 +56,10 @@ TOOL_CHECKS: dict[str, ToolCheck] = {
         cmd="gcc-11 -dumpfullversion",
         pattern=r"(\d+(?:\.\d+)*)",
     ),
+    "clang-tidy-20": ToolCheck(
+        cmd="clang-tidy-20 --version",
+        pattern=r"LLVM version (\d+(?:\.\d+)*)",
+    ),
     "clangd-20": ToolCheck(
         cmd="clangd-20 --version",
         pattern=r"clangd version (\d+(?:\.\d+)*)",

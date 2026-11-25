@@ -3,6 +3,7 @@ bash
 build-essential
 ca-certificates
 ccache
+clang-tidy-20 >= 20
 clangd-20 >= 20
 cmake
 curl
