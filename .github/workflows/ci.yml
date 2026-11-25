@@ -525,6 +525,7 @@ jobs:
           RUNNER_LINUX_SLIM: ${{ steps.detect.outputs.runner_linux_slim }}
           RUNNER_LINUX_SMALL: ${{ steps.detect.outputs.runner_linux_small }}
           RUNNER_LINUX_X64: ${{ steps.detect.outputs.runner_linux_x64 }}
+          RUNNER_LINUX_X64_8XLARGE: ${{ steps.detect.outputs.runner_linux_x64_8xlarge }}
           RUNNER_LINUX_22_X64: ${{ steps.detect.outputs.runner_linux_22_x64 }}
           RUNNER_LINUX_ARM64: ${{ steps.detect.outputs.runner_linux_arm64 }}
           RUNNER_LINUX_ARM64_SMALL: ${{ steps.detect.outputs.runner_linux_arm64_small }}
@@ -539,6 +540,7 @@ jobs:
           [[ "${RUNNER_LINUX_SLIM}" == "namespace-profile-linux-slim" ]]
           [[ "${RUNNER_LINUX_SMALL}" == "namespace-profile-linux-small" ]]
           [[ "${RUNNER_LINUX_X64}" == "namespace-profile-linux-x64" ]]
+          [[ "${RUNNER_LINUX_X64_8XLARGE}" == "namespace-profile-linux-x64-8xlarge" ]]
           [[ "${RUNNER_LINUX_22_X64}" == "namespace-profile-linux-22-x64" ]]
           [[ "${RUNNER_LINUX_ARM64}" == "namespace-profile-linux-arm64" ]]
           [[ "${RUNNER_LINUX_ARM64_SMALL}" == "namespace-profile-linux-arm64-small" ]]
@@ -549,6 +551,7 @@ jobs:
           jq -e . <<<"${RUNNERS_JSON}" >/dev/null
           [[ "$(jq -r '.linux_slim' <<<"${RUNNERS_JSON}")" == "${RUNNER_LINUX_SLIM}" ]]
           [[ "$(jq -r '.linux_x64' <<<"${RUNNERS_JSON}")" == "${RUNNER_LINUX_X64}" ]]
+          [[ "$(jq -r '.linux_x64_8xlarge' <<<"${RUNNERS_JSON}")" == "${RUNNER_LINUX_X64_8XLARGE}" ]]
           [[ "$(jq -r '.linux_22_x64' <<<"${RUNNERS_JSON}")" == "${RUNNER_LINUX_22_X64}" ]]
           [[ "$(jq -r '.linux_arm64' <<<"${RUNNERS_JSON}")" == "${RUNNER_LINUX_ARM64}" ]]
           [[ "$(jq -r '.windows_2022_x64' <<<"${RUNNERS_JSON}")" == "${RUNNER_WINDOWS_2022_X64}" ]]

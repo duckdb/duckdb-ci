@@ -3,5 +3,6 @@ self-hosted-runner:
     - namespace-profile-linux-slim
     - namespace-profile-linux-small
     - namespace-profile-linux-x64
+    - namespace-profile-linux-x64-8xlarge
     - namespace-profile-linux-arm64
     - namespace-profile-windows-x64
