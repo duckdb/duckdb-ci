@@ -244,7 +244,7 @@ jobs:
         run: |
           set -eux -o pipefail
           for tool in \
-            black capigen ccache clang-format clangd-20 clangd-tidy cmake cmake-format \
+            black capigen ccache clang-format clang-tidy-20 clangd-20 clangd-tidy cmake cmake-format \
             curl g++ gcc gh git jq make ninja python3 shellcheck typos; do
             command -v "${tool}"
           done
