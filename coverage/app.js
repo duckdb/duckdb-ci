@@ -1,11 +1,9 @@
 (function () {
   "use strict";
 
-  var CACHE_PREFIX = "duckdb-coverage-report-v2-";
   var DEFAULT_NAME = "linux-release-default-tests";
   var DEFAULT_REPORT_TITLE = "LCOV - code coverage report";
   var ARTIFACT_BASE = "https://artifacts.duckdb.org/";
-  var PARALLEL_DOWNLOAD_RANGES = 8;
 
   var statusPanel = document.getElementById("status-panel");
   var statusMessage = document.getElementById("status-message");
@@ -13,6 +11,7 @@
   var progress = document.getElementById("progress");
   var reportFrame = document.getElementById("report-frame");
   var reportBasePath = null;
+  var reportId = null;
   var hashChangeFromFrame = false;
 
   function getBasePath() {
@@ -22,10 +21,6 @@
   function getBranch(basePath) {
     var parts = basePath.split("/").filter(Boolean);
     return decodeURIComponent(parts[parts.length - 1]);
-  }
-
-  function getCacheName(basePath) {
-    return CACHE_PREFIX + basePath;
   }
 
   function getReportName() {
@@ -75,16 +70,6 @@
     statusDetail.textContent = stage + ": " + message;
   }
 
-  function formatBytes(bytes) {
-    if (bytes < 1024) {
-      return bytes + " B";
-    }
-    if (bytes < 1024 * 1024) {
-      return (bytes / 1024).toFixed(1) + " KB";
-    }
-    return (bytes / (1024 * 1024)).toFixed(1) + " MB";
-  }
-
   async function waitForController() {
     if (navigator.serviceWorker.controller) {
       return;
@@ -110,134 +95,45 @@
       return false;
     }
 
-    await navigator.serviceWorker.register("sw.js");
+    var registration = await navigator.serviceWorker.register("sw.js", { updateViaCache: "none" });
+    await registration.update();
+    var installing = registration.installing;
+    if (installing && installing.state !== "activated") {
+      await new Promise(function (resolve, reject) {
+        installing.addEventListener("statechange", function () {
+          if (installing.state === "activated") { resolve(); }
+          if (installing.state === "redundant") { reject(new Error("Service worker installation failed.")); }
+        });
+      });
+    }
     await navigator.serviceWorker.ready;
     await waitForController();
     return true;
   }
 
-  function updateDownloadStatus(received, contentLength) {
-    if (contentLength) {
-      setStatus(
-        "Downloading coverage report...",
-        formatBytes(received) + " of " + formatBytes(contentLength),
-        (received / contentLength) * 100
-      );
-    } else {
-      setStatus("Downloading coverage report...", formatBytes(received) + " downloaded", null);
-    }
-  }
-
-  async function readResponseBody(response, onChunk) {
-    if (!response.body) {
-      var buffer = new Uint8Array(await response.arrayBuffer());
-      onChunk(buffer);
-      return;
-    }
-
-    var reader = response.body.getReader();
-
-    while (true) {
-      var result = await reader.read();
-      if (result.done) {
-        break;
-      }
-      onChunk(result.value);
-    }
-  }
-
-  async function downloadArtifactSingle(url) {
-    var response = await fetch(url, { redirect: "follow" });
-    if (!response.ok) {
-      throw new Error("HTTP " + response.status + " while fetching " + url);
-    }
-    var contentLength = Number(response.headers.get("content-length")) || 0;
-    var chunks = [];
-    var received = 0;
-
-    await readResponseBody(response, function (chunk) {
-      chunks.push(chunk);
-      received += chunk.length;
-      updateDownloadStatus(received, contentLength);
-    });
-
-    var bytes = new Uint8Array(contentLength || received);
-    var offset = 0;
-    for (var i = 0; i < chunks.length; i++) {
-      bytes.set(chunks[i], offset);
-      offset += chunks[i].length;
-    }
-    return bytes;
-  }
-
-  function getRanges(contentLength, count) {
-    var ranges = [];
-    var chunkSize = Math.ceil(contentLength / count);
-
-    for (var i = 0; i < count; i++) {
-      var start = i * chunkSize;
-      var end = Math.min(contentLength - 1, start + chunkSize - 1);
-      if (start <= end) {
-        ranges.push({
-          start: start,
-          end: end
-        });
-      }
-    }
-    return ranges;
-  }
-
-  async function downloadArtifactParallel(url) {
-    var headResponse = await fetch(url, {
-      method: "HEAD",
-      redirect: "follow"
-    });
-    if (!headResponse.ok) {
-      throw new Error("HTTP " + headResponse.status + " while checking " + url);
-    }
-
-    var contentLength = Number(headResponse.headers.get("content-length")) || 0;
-    var acceptRanges = (headResponse.headers.get("accept-ranges") || "").toLowerCase();
-    if (!contentLength || acceptRanges !== "bytes") {
-      throw new Error("Server does not support ranged downloads.");
-    }
-
-    var bytes = new Uint8Array(contentLength);
-    var received = 0;
-    var ranges = getRanges(contentLength, PARALLEL_DOWNLOAD_RANGES);
-
-    await Promise.all(ranges.map(async function (range) {
-      var response = await fetch(headResponse.url, {
-        headers: {
-          Range: "bytes=" + range.start + "-" + range.end
+  async function prepareReport(url, id, path) {
+    return new Promise(function (resolve, reject) {
+      var channel = new MessageChannel();
+      var timeout = setTimeout(function () {
+        channel.port1.close();
+        reject(new Error("Timed out while preparing the report. Reload to retry."));
+      }, 60000);
+      channel.port1.onmessage = function (event) {
+        clearTimeout(timeout);
+        channel.port1.close();
+        if (event.data.error) {
+          reject(new Error(event.data.error));
+        } else {
+          resolve(event.data.result);
         }
-      });
-      if (response.status !== 206) {
-        throw new Error("HTTP " + response.status + " while fetching byte range.");
-      }
-
-      var offset = range.start;
-      await readResponseBody(response, function (chunk) {
-        bytes.set(chunk, offset);
-        offset += chunk.length;
-        received += chunk.length;
-        updateDownloadStatus(received, contentLength);
-      });
-    }));
-
-    return bytes;
-  }
-
-  async function downloadArtifact(url, name) {
-    setStatus("Downloading coverage report...", "coverage-" + name + ".zip", null);
-
-    try {
-      return await downloadArtifactParallel(url);
-    } catch (error) {
-      setStatus("Downloading coverage report...", "coverage-" + name + ".zip", null);
-    }
-
-    return downloadArtifactSingle(url);
+      };
+      navigator.serviceWorker.controller.postMessage({
+        type: "initialize-report",
+        url: url,
+        id: id,
+        path: path
+      }, [channel.port2]);
+    });
   }
 
   function isSafeZipPath(path) {
@@ -285,15 +181,16 @@
 
   function getReportUrlFromHash(basePath) {
     var target = getHashReportPath();
-    return basePath + "__report__/" + target.path + target.fragment;
+    return basePath + "__report__/" + reportId + "/" + target.path + target.fragment;
   }
 
   function getHashFromReportUrl(url, basePath) {
-    if (url.origin !== window.location.origin || !url.pathname.startsWith(basePath + "__report__/")) {
+    var prefix = basePath + "__report__/" + reportId + "/";
+    if (url.origin !== window.location.origin || !url.pathname.startsWith(prefix)) {
       return null;
     }
 
-    var path = url.pathname.slice((basePath + "__report__/").length);
+    var path = url.pathname.slice(prefix.length);
     if (!isSafeZipPath(path)) {
       return null;
     }
@@ -308,60 +205,6 @@
     var current = reportFrame.contentWindow ? reportFrame.contentWindow.location.pathname + reportFrame.contentWindow.location.hash : "";
     if (current !== target) {
       reportFrame.src = target;
-    }
-  }
-
-  function contentTypeFor(path) {
-    if (path.endsWith(".html")) {
-      return "text/html; charset=utf-8";
-    }
-    if (path.endsWith(".css")) {
-      return "text/css; charset=utf-8";
-    }
-    if (path.endsWith(".js")) {
-      return "text/javascript; charset=utf-8";
-    }
-    if (path.endsWith(".png")) {
-      return "image/png";
-    }
-    if (path.endsWith(".svg")) {
-      return "image/svg+xml";
-    }
-    if (path.endsWith(".gif")) {
-      return "image/gif";
-    }
-    return "application/octet-stream";
-  }
-
-  async function cacheReport(files, basePath) {
-    var names = Object.keys(files).filter(isSafeZipPath);
-    if (!files["index.html"]) {
-      throw new Error("The artifact does not contain index.html at the zip root.");
-    }
-
-    var cache = await caches.open(getCacheName(basePath));
-    var keys = await cache.keys();
-    await Promise.all(keys.map(function (request) {
-      return cache.delete(request);
-    }));
-
-    for (var i = 0; i < names.length; i++) {
-      var name = names[i];
-      var url = new URL(basePath + "__report__/" + name, window.location.origin);
-      var response = new Response(files[name], {
-        headers: {
-          "content-type": contentTypeFor(name),
-          "cache-control": "no-store"
-        }
-      });
-      await cache.put(url.href, response);
-
-      if (i % 100 === 0 || i === names.length - 1) {
-        setStatus("Preparing coverage report...", (i + 1) + " of " + names.length + " files", ((i + 1) / names.length) * 100);
-        await new Promise(function (resolve) {
-          setTimeout(resolve, 0);
-        });
-      }
     }
   }
 
@@ -382,27 +225,13 @@
       return;
     }
 
-    var zipBytes;
+    reportId = crypto.randomUUID();
     try {
-      zipBytes = await downloadArtifact(artifactUrl, name);
+      setStatus("Opening coverage report...", "coverage-" + name + ".zip", null);
+      var report = await prepareReport(artifactUrl, reportId, getHashReportPath().path);
+      setStatus("Loading coverage page...", report.files + " files available on demand", null);
     } catch (error) {
-      showError("Download failed", error);
-      return;
-    }
-
-    var files;
-    try {
-      setStatus("Extracting coverage report...", formatBytes(zipBytes.length) + " archive", null);
-      files = window.fflate.unzipSync(zipBytes);
-    } catch (error) {
-      showError("Extraction failed", error);
-      return;
-    }
-
-    try {
-      await cacheReport(files, basePath);
-    } catch (error) {
-      showError("Cache write failed", error);
+      showError("Report preparation failed", error);
       return;
     }
 

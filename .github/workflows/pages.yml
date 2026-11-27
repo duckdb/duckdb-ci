@@ -32,6 +32,9 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
 
+      - name: Test coverage archive loading
+        run: node --test coverage/tests/zip.test.js
+
       - name: Configure Pages
         uses: actions/configure-pages@v6
 
